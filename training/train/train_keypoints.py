@@ -4,7 +4,7 @@ File Created: 2026-02-07 18:00:00
 Author: Xingnan Zhu
 File Name: train_keypoints.py
 Description:
-    Standard script to train a YOLOv8-Pose model (Pitch Keypoints).
+    Standard script to train a YOLO26-Pose model (Pitch Keypoints).
     Usage: python training/train/train_keypoints.py
 """
 
@@ -75,7 +75,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Train YOLO Pose Estimator")
     parser.add_argument("--data", type=str, default=config_path, help="Path to dataset YAML")
-    parser.add_argument("--model", type=str, default="yolov8n-pose.pt", help="Base model weights")
+    parser.add_argument("--model", type=str, default="yolo26x-pose.pt", help="Base model weights")
     parser.add_argument("--epochs", type=int, default=100, help="Number of epochs")
     parser.add_argument("--batch", type=int, default=16, help="Batch size")
     parser.add_argument("--imgsz", type=int, default=640, help="Image size")

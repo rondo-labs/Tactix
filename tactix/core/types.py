@@ -73,6 +73,9 @@ class Player:
     confidence: float = 0.0
     team: TeamID = TeamID.UNKNOWN
     keypoints: Optional[Keypoints] = None
+    # --- Mask Info (Filled by SAM3Refiner) ---
+    mask: Optional[np.ndarray] = None
+    mask_score: float = 0.0
 
     # --- Physical Info (Filled by Semantics Layer) ---
     # Real pitch coordinates (Unit: meters). Origin usually at center circle or top-left corner.
@@ -116,6 +119,9 @@ class Ball:
     pitch_position: Optional[Point] = None # Real position of the ball
     velocity: Optional[Point] = None       # Ball velocity (for shot/pass power)
     owner_id: Optional[int] = None         # Ball carrier ID
+    # --- Mask Info (Filled by SAM3Refiner) ---
+    mask: Optional[np.ndarray] = None
+    mask_score: float = 0.0
     
     @property
     def center(self) -> Tuple[int, int]:

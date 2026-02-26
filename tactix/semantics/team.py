@@ -105,32 +105,36 @@ class TeamClassifier:
         return TeamID.A if label == 0 else TeamID.B
 
     @staticmethod
-    def _extract_shirt_color(frame: np.ndarray, rect: Tuple[float, float, float, float]) -> Optional[np.ndarray]:
+    def _extract_shirt_color(frame: np.ndarray, rect: Tuple[float, float, float, float], mask: Optional[np.ndarray] = None) -> Optional[np.ndarray]:
         """
-        Helper function: Extracts shirt color from bounding box.
-        Technique: Only take the upper body center part to avoid grass, head, and shorts.
+        Helper function: Extracts shirt color from bounding box or mask.
+        If mask is provided, only use mask pixels in upper body region.
         """
         x1, y1, x2, y2 = map(int, rect)
-        
-        # Boundary check
         h_img, w_img, _ = frame.shape
         x1, y1 = max(0, x1), max(0, y1)
         x2, y2 = min(w_img, x2), min(h_img, y2)
-
-        # Crop image
         img = frame[y1:y2, x1:x2]
         h, w, _ = img.shape
-        if h < 5 or w < 5: return None # Too small
-
-        # --- Key Strategy: Crop Upper Body Center ---
-        # y: From 15% to 50% (Avoid head and shorts)
-        # x: From 25% to 75% (Avoid background grass)
-        crop = img[int(h*0.15):int(h*0.50), int(w*0.25):int(w*0.75)]
-        
-        if crop.size == 0: return None
-
-        # Calculate average color
-        avg_color_row = np.average(crop, axis=0)
-        avg_color = np.average(avg_color_row, axis=0)
-        
+        if h < 5 or w < 5:
+            return None
+        # Crop upper body center
+        y_start, y_end = int(h*0.15), int(h*0.50)
+        x_start, x_end = int(w*0.25), int(w*0.75)
+        crop = img[y_start:y_end, x_start:x_end]
+        if crop.size == 0:
+            return None
+        if mask is not None:
+            # Resize mask to bbox region
+            mask_crop = mask[y_start:y_end, x_start:x_end]
+            if mask_crop.shape[:2] != crop.shape[:2]:
+                return None
+            # Only use pixels inside mask
+            mask_pixels = crop[mask_crop > 0]
+            if mask_pixels.size == 0:
+                return None
+            avg_color = np.mean(mask_pixels, axis=0)
+        else:
+            avg_color_row = np.average(crop, axis=0)
+            avg_color = np.average(avg_color_row, axis=0)
         return avg_color

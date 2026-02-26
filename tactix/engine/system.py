@@ -28,7 +28,8 @@ from tactix.visualization.overlays.base.compactness import CompactnessOverlay
 from tactix.visualization.overlays.base.cover_shadow import CoverShadowOverlay
 from tactix.visualization.overlays.base.team_centroid import CentroidOverlay
 from tactix.visualization.overlays.base.team_width_length import WidthLengthOverlay
-from tactix.vision.detector import Detector
+from tactix.models.yolo_impl import YOLODetector
+from tactix.models.hybrid_detector import HybridDetector
 from tactix.vision.calibration.ai_estimator import AIPitchEstimator
 from tactix.vision.calibration.manual_estimator import ManualPitchEstimator
 from tactix.vision.calibration.panorama_estimator import PanoramaPitchEstimator
@@ -93,7 +94,22 @@ class TactixEngine:
         else:
             self.pitch_estimator = None
 
-        self.detector = Detector(self.cfg.PLAYER_MODEL_PATH, self.cfg.DEVICE, self.cfg.CONF_PLAYER)
+        if self.cfg.SAM3_ENABLED:
+            self.detector = HybridDetector(
+                yolo_weights=self.cfg.PLAYER_MODEL_PATH,
+                sam3_weights=self.cfg.SAM3_MODEL_PATH,
+                device=self.cfg.DEVICE,
+                conf_yolo=self.cfg.CONF_PLAYER,
+                conf_sam3=self.cfg.SAM3_CONF,
+                sam3_half=self.cfg.SAM3_HALF
+            )
+        else:
+            self.detector = YOLODetector(
+                model_weights=self.cfg.PLAYER_MODEL_PATH,
+                device=self.cfg.DEVICE,
+                conf_threshold=self.cfg.CONF_PLAYER,
+                iou_threshold=0.7
+            )
         self.tracker = Tracker()
         self.camera_tracker = CameraTracker(smoothing_window=5)
 

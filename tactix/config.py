@@ -74,6 +74,14 @@ class Config:
     DEVICE: str = "mps"
     CONF_PITCH: float = 0.3
     CONF_PLAYER: float = 0.3
+
+    # === SAM 3 Parameters ===
+    SAM3_ENABLED: bool = False
+    SAM3_MODEL_PATH: str = "assets/weights/sam3.pt"
+    SAM3_CONF: float = 0.25
+    SAM3_HALF: bool = True
+    SAM3_TEXT_PROMPTS: list = ["football player", "goalkeeper", "referee", "football"]
+    SAM3_REFINE_MODE: str = "bbox"  # "bbox" or "concept"
     
     # Jersey Number Detection (OCR-based player identification)
     ENABLE_JERSEY_OCR: bool = True   # Auto-disabled if easyocr not installed
