@@ -39,3 +39,4 @@ docs/
 dist/
 build/
 *.egg-info/
+.venv/

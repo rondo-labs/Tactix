@@ -1,16 +1,16 @@
 [build-system]
-requires = ["setuptools>=68.0", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "tactix"
 version = "0.1.0"
 description = "Automated football tactical analysis engine using Computer Vision"
 readme = "README.md"
-license = {text = "GPL-3.0-or-later"}
+license = { text = "GPL-3.0-or-later" }
 requires-python = ">=3.12"
 authors = [
-    {name = "Xingnan Zhu"},
+    { name = "Xingnan Zhu" },
 ]
 keywords = ["football", "soccer", "tactics", "computer-vision", "yolo", "tracking"]
 classifiers = [
@@ -42,8 +42,31 @@ Repository = "https://github.com/Dreaner/Tactix"
 [project.scripts]
 tactix = "tactix.cli:main"
 
-[tool.setuptools.packages.find]
-include = ["tactix*"]
+[tool.hatch.build.targets.wheel]
+packages = ["src/tactix"]
 
-[tool.setuptools.package-data]
-tactix = ["*.yaml", "*.json"]
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/tactix/",
+    "LICENSE",
+    "README.md",
+    "pyproject.toml",
+]
+exclude = [
+    "assets/weights/",
+    "assets/samples/",
+    "assets/output/",
+    "assets/tactical_cam_footage/",
+    "datasets/",
+    "training/",
+    "notebooks/",
+    "runs/",
+    "docs/",
+    "tools/",
+]
+
+[dependency-groups]
+dev = [
+    "jupyter>=1.0",
+    "ipykernel>=6.0",
+]

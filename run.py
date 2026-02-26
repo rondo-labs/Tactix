@@ -10,12 +10,6 @@ Description:
 """
 
 
-import sys
-import os
-
-# Ensure tactix package can be found
-sys.path.append(os.getcwd())
-
 from tactix.engine.system import TactixEngine
 from tactix.config import Config
 from tactix.ui.calibration import CalibrationUI
