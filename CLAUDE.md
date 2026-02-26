@@ -16,8 +16,15 @@ Tactix is an automated football (soccer) tactical analysis engine that processes
 ## Running the Project
 
 ```bash
-pip install -r requirements.txt
-python run.py
+uv sync              # Create/update .venv and install all dependencies
+uv run python run.py
+```
+
+To include the optional OCR extra:
+
+```bash
+uv sync --extra ocr
+uv run python run.py
 ```
 
 All configuration is in `tactix/config.py`. Edit it to change input/output paths, calibration mode, and visualization toggles before running.
@@ -52,22 +59,22 @@ All data flows through `FrameData` (defined in `tactix/core/types.py`). Each pip
 | File | Purpose |
 |------|---------|
 | `run.py` | Entry point; orchestrates init, UI menus, engine startup |
-| `tactix/config.py` | **Central config** — all paths, thresholds, toggles |
-| `tactix/engine/system.py` | `TactixEngine` — main pipeline loop |
-| `tactix/core/types.py` | Data contracts: `Player`, `Ball`, `FrameData`, `TeamID` |
-| `tactix/core/registry.py` | **Persistent cross-frame state**: `PlayerRegistry` (team voting), `BallStateTracker` (interpolation) |
-| `tactix/core/keypoints.py` | 27 standard pitch keypoint definitions |
-| `tactix/core/geometry.py` | World coordinate system (105×68m pitch) |
-| `tactix/vision/transformer.py` | Homography matrix management (pixel ↔ meters) |
-| `tactix/vision/detector.py` | YOLO-based detection wrapper |
-| `tactix/vision/tracker.py` | ByteTrack ID persistence wrapper |
-| `tactix/vision/camera.py` | Optical flow camera stabilization |
-| `tactix/semantics/team.py` | K-Means team classification |
-| `tactix/visualization/minimap.py` | 2D tactical minimap renderer |
-| `tactix/tactics/` | Tactical modules (pass network, Voronoi, heatmap, etc.) |
-| `tactix/ui/calibration.py` | Interactive manual calibration UI |
-| `tactix/export/json_exporter.py` | JSON tracking data export |
-| `tactix/export/cache.py` | Pickle-based tracking cache (`TrackingCache`); enabled via `ENABLE_CACHE` |
+| `src/tactix/config.py` | **Central config** — all paths, thresholds, toggles |
+| `src/tactix/engine/system.py` | `TactixEngine` — main pipeline loop |
+| `src/tactix/core/types.py` | Data contracts: `Player`, `Ball`, `FrameData`, `TeamID` |
+| `src/tactix/core/registry.py` | **Persistent cross-frame state**: `PlayerRegistry` (team voting), `BallStateTracker` (interpolation) |
+| `src/tactix/core/keypoints.py` | 27 standard pitch keypoint definitions |
+| `src/tactix/core/geometry.py` | World coordinate system (105×68m pitch) |
+| `src/tactix/vision/transformer.py` | Homography matrix management (pixel ↔ meters) |
+| `src/tactix/vision/detector.py` | YOLO-based detection wrapper |
+| `src/tactix/vision/tracker.py` | ByteTrack ID persistence wrapper |
+| `src/tactix/vision/camera.py` | Optical flow camera stabilization |
+| `src/tactix/semantics/team.py` | K-Means team classification |
+| `src/tactix/visualization/minimap.py` | 2D tactical minimap renderer |
+| `src/tactix/tactics/` | Tactical modules (pass network, Voronoi, heatmap, etc.) |
+| `src/tactix/ui/calibration.py` | Interactive manual calibration UI |
+| `src/tactix/export/json_exporter.py` | JSON tracking data export |
+| `src/tactix/export/cache.py` | Pickle-based tracking cache (`TrackingCache`); enabled via `ENABLE_CACHE` |
 
 ## Conventions & Coding Rules
 
@@ -109,17 +116,19 @@ CACHE_DIR    = "assets/cache"
 ```
 Tactix/
 ├── run.py                   # Entry point
-├── requirements.txt
-├── tactix/
-│   ├── config.py            # Central configuration
-│   ├── core/                # Data types, keypoints, geometry
-│   ├── engine/              # TactixEngine pipeline
-│   ├── vision/              # Detection, tracking, calibration, camera
-│   ├── semantics/           # Team classification
-│   ├── tactics/             # Tactical analysis modules
-│   ├── visualization/       # Minimap renderer
-│   ├── ui/                  # Interactive UIs
-│   └── export/              # Data exporters
+├── pyproject.toml           # Project metadata, dependencies, build config
+├── .python-version          # Pins Python 3.12 for uv
+├── src/
+│   └── tactix/
+│       ├── config.py            # Central configuration
+│       ├── core/                # Data types, keypoints, geometry
+│       ├── engine/              # TactixEngine pipeline
+│       ├── vision/              # Detection, tracking, calibration, camera
+│       ├── semantics/           # Team classification
+│       ├── tactics/             # Tactical analysis modules
+│       ├── visualization/       # Minimap renderer
+│       ├── ui/                  # Interactive UIs
+│       └── export/              # Data exporters
 ├── assets/
 │   ├── weights/             # YOLO model weights
 │   ├── samples/             # Input test videos
