@@ -14,7 +14,7 @@ import numpy as np
 import supervision as sv
 from tqdm import tqdm
 
-from tactix.config import Config, CalibrationMode, Colors
+from tactix.config import Config, Colors
 from tactix.core.registry import PlayerRegistry, BallStateTracker
 from tactix.core.types import TeamID, Point, FrameData, TacticalOverlays
 from tactix.semantics.team import TeamClassifier
@@ -31,9 +31,6 @@ from tactix.visualization.overlays.base.team_width_length import WidthLengthOver
 from tactix.models.yolo_impl import YOLODetector
 from tactix.models.hybrid_detector import HybridDetector
 from tactix.vision.calibration.ai_estimator import AIPitchEstimator
-from tactix.vision.calibration.manual_estimator import ManualPitchEstimator
-from tactix.vision.calibration.panorama_estimator import PanoramaPitchEstimator
-from tactix.vision.calibration.hybrid_estimator import HybridPitchEstimator
 from tactix.vision.tracker import Tracker
 from tactix.vision.transformer import ViewTransformer
 from tactix.visualization.minimap import MinimapRenderer
@@ -60,37 +57,16 @@ from tactix.visualization.overlays.formation.formation import FormationOverlay
 
 
 class TactixEngine:
-    def __init__(self, cfg: Config = None, manual_keypoints=None):
+    def __init__(self, cfg: Config = None):
         self.cfg = cfg or Config()
         print("🚀 Initializing Tactix Engine...")
-
-        # Apply manual keypoints override after config is set
-        if manual_keypoints:
-            self.cfg.CALIBRATION_MODE = CalibrationMode.PANORAMA
 
         # ==========================================
         # 1. Perception Modules
         # ==========================================
         if self.cfg.GEOMETRY_ENABLED:
-            if self.cfg.CALIBRATION_MODE == CalibrationMode.MANUAL_FIXED:
-                print("🔧 Mode: Manual Fixed Calibration")
-                self.pitch_estimator = ManualPitchEstimator(manual_keypoints)
-            elif self.cfg.CALIBRATION_MODE == CalibrationMode.PANORAMA:
-                print("🌐 Mode: Panorama Calibration")
-                self.pitch_estimator = PanoramaPitchEstimator(manual_keypoints)
-            elif self.cfg.CALIBRATION_MODE == CalibrationMode.HYBRID:
-                print("🔀 Mode: Hybrid Calibration (AI + ORB)")
-                self.pitch_estimator = HybridPitchEstimator(
-                    model_path=self.cfg.PITCH_MODEL_PATH,
-                    device=self.cfg.DEVICE,
-                    orb_features=self.cfg.HYBRID_ORB_FEATURES,
-                    max_drift_frames=self.cfg.HYBRID_MAX_DRIFT_FRAMES,
-                    anchor_threshold=self.cfg.HYBRID_YOLO_ANCHOR_THRESHOLD,
-                    conf_pitch=self.cfg.CONF_PITCH,
-                )
-            else:
-                print("🤖 Mode: AI Auto Calibration")
-                self.pitch_estimator = AIPitchEstimator(self.cfg.PITCH_MODEL_PATH, self.cfg.DEVICE)
+            print("🤖 Mode: AI Auto Calibration")
+            self.pitch_estimator = AIPitchEstimator(self.cfg.PITCH_MODEL_PATH, self.cfg.DEVICE)
         else:
             self.pitch_estimator = None
 
@@ -307,7 +283,7 @@ class TactixEngine:
 
         with sv.VideoSink(self.cfg.OUTPUT_VIDEO, video_info) as sink:
             for i, frame in tqdm(enumerate(frames), total=video_info.total_frames):
-                active_kps, has_matrix = self._stage_calibration(frame)
+                active_kps, kp_confs, has_matrix = self._stage_calibration(frame)
                 frame_data = self.detector.detect(frame, i)
                 frame_data.ball = self.ball_state_tracker.update(i, frame_data.ball)
                 self._stage_tracking(frame_data)
@@ -319,7 +295,7 @@ class TactixEngine:
                     self._stage_coordinate_mapping(frame_data)
                     overlays = self._stage_tactical_analysis(frame_data)
 
-                canvas = self._stage_visualization(frame, frame_data, active_kps, has_matrix, overlays)
+                canvas = self._stage_visualization(frame, frame_data, active_kps, kp_confs, has_matrix, overlays)
                 sink.write_frame(canvas)
 
                 if self.pdf_exporter:
@@ -338,43 +314,28 @@ class TactixEngine:
     # Stage Methods
     # ==========================================
 
-    def _stage_calibration(self, frame: np.ndarray) -> tuple[np.ndarray | None, bool]:
+    def _stage_calibration(self, frame: np.ndarray) -> tuple[np.ndarray | None, np.ndarray | None, bool]:
         """Stage 1: Estimate pitch keypoints and update the homography matrix."""
         if not self.cfg.GEOMETRY_ENABLED or not self.pitch_estimator:
-            return None, False
+            return None, None, False
 
         pitch_keypoints, keypoint_confidences = self.pitch_estimator.predict(frame)
         active_keypoints = None
 
-        if self.cfg.CALIBRATION_MODE == CalibrationMode.AI_ONLY:
-            if pitch_keypoints is not None and len(pitch_keypoints) >= 4:
-                self.camera_tracker.soft_reset(pitch_keypoints, frame)
-                active_keypoints = pitch_keypoints
-            else:
-                tracked = self.camera_tracker.update(frame)
-                if tracked is not None:
-                    active_keypoints = tracked
-                    keypoint_confidences = np.ones(len(active_keypoints))
-        elif self.cfg.CALIBRATION_MODE == CalibrationMode.HYBRID:
-            # HybridEstimator handles ORB fusion internally — use its output directly
+        if pitch_keypoints is not None and len(pitch_keypoints) >= 4:
+            self.camera_tracker.soft_reset(pitch_keypoints, frame)
             active_keypoints = pitch_keypoints
-            # Fall back to CameraTracker only if Hybrid also failed completely
-            if active_keypoints is None:
-                tracked = self.camera_tracker.update(frame)
-                if tracked is not None:
-                    active_keypoints = tracked
-                    keypoint_confidences = np.ones(len(active_keypoints))
-            else:
-                # Keep CameraTracker in sync for potential future fallback
-                self.camera_tracker.soft_reset(pitch_keypoints, frame)
         else:
-            active_keypoints = pitch_keypoints
+            tracked = self.camera_tracker.update(frame)
+            if tracked is not None:
+                active_keypoints = tracked
+                keypoint_confidences = np.ones(len(active_keypoints))
 
         if active_keypoints is None:
-            return None, False
+            return None, None, False
 
         has_matrix = self.transformer.update(active_keypoints, keypoint_confidences, self.cfg.CONF_PITCH)
-        return active_keypoints, has_matrix
+        return active_keypoints, keypoint_confidences, has_matrix
 
     def _stage_tracking(self, frame_data: FrameData) -> None:
         """Stage 2: Assign persistent track IDs via ByteTrack."""
@@ -624,15 +585,21 @@ class TactixEngine:
         frame: np.ndarray,
         frame_data: FrameData,
         active_kps: np.ndarray | None,
+        kp_confs: np.ndarray | None,
         has_matrix: bool,
         overlays: TacticalOverlays,
     ) -> np.ndarray:
         """Stage 6: Annotate the frame and composite the minimap."""
         annotated = frame.copy()
 
-        # Debug keypoints
-        if self.cfg.GEOMETRY_ENABLED and self.cfg.SHOW_DEBUG_KEYPOINTS and active_kps is not None:
-            for x, y in active_kps:
+        # Debug keypoints — only draw points that pass confidence threshold and are within frame
+        if self.cfg.GEOMETRY_ENABLED and self.cfg.SHOW_DEBUG_KEYPOINTS and active_kps is not None and kp_confs is not None:
+            fh, fw = frame.shape[:2]
+            for i, (x, y) in enumerate(active_kps):
+                if kp_confs[i] < self.cfg.CONF_PITCH:
+                    continue
+                if x <= 0 or y <= 0 or x >= fw or y >= fh:
+                    continue
                 cv2.circle(annotated, (int(x), int(y)), 3, Colors.to_bgr(Colors.KEYPOINT), -1)
 
         # Pass network lines (drawn on the main view)

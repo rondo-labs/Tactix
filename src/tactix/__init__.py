@@ -13,8 +13,8 @@ Quick start::
     engine = TactixEngine(cfg)
     engine.run()
 """
-from tactix.config import CalibrationMode, Config
+from tactix.config import Config
 from tactix.engine.system import TactixEngine
 
 __version__ = "0.1.0"
-__all__ = ["TactixEngine", "Config", "CalibrationMode", "__version__"]
+__all__ = ["TactixEngine", "Config", "__version__"]

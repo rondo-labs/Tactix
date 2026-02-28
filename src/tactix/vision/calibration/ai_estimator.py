@@ -5,7 +5,7 @@ Author: Xingnan Zhu
 File Name: ai_estimator.py
 Description:
     Implements the pitch keypoint estimation using a YOLO-Pose model.
-    It detects 27 standard keypoints on the football pitch to establish
+    It detects 26 standard keypoints on the football pitch to establish
     the correspondence between the video frame and the 2D tactical board.
 """
 
@@ -23,8 +23,8 @@ class AIPitchEstimator(BasePitchEstimator):
     def predict(self, frame: np.ndarray) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
         """
         Returns: (keypoints_xy, confidences)
-        xy shape: (27, 2)
-        conf shape: (27, )
+        xy shape: (26, 2)
+        conf shape: (26, )
         """
         # Run inference (verbose=False suppresses logs)
         results = self.model(frame, device=self.device, verbose=False)[0]
@@ -37,8 +37,8 @@ class AIPitchEstimator(BasePitchEstimator):
                 # Find index of max confidence
                 best_idx = results.boxes.conf.argmax().item()
 
-            # datasets shape: (1, 27, 3) -> [x, y, conf]
-            kpts = results.keypoints.data[0].cpu().numpy()
+            # datasets shape: (1, 26, 3) -> [x, y, conf]
+            kpts = results.keypoints.data[best_idx].cpu().numpy()
             xy = kpts[:, :2]
             conf = kpts[:, 2]
             return xy, conf
@@ -54,14 +54,11 @@ class MockPitchEstimator(BasePitchEstimator):
         print(f"⚠️ Warning: Using Mock Pitch Estimator (Fixed Coordinates)")
         self.mock_points = mock_points
         
-        # Construct a dummy output array (27 points, all 0)
-        # 27 because our V4 standard defines 27 points
-        self.dummy_xy = np.zeros((27, 2), dtype=float)
-        self.dummy_conf = np.zeros(27, dtype=float)
-        
-        # Fill in the 4 fixed points
+        self.dummy_xy = np.zeros((26, 2), dtype=float)
+        self.dummy_conf = np.zeros(26, dtype=float)
+
         for x, y, idx in mock_points:
-            if idx < 27:
+            if idx < 26:
                 self.dummy_xy[idx] = [x, y]
                 self.dummy_conf[idx] = 1.0 # Full confidence
 
