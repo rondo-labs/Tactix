@@ -55,9 +55,10 @@ KEY_POINTS = {
     "CENTER_SPOT": to_px(LENGTH_M/2, WIDTH_M/2), # Center Spot
 
     # Center Circle: midline intersection (top) + left/right widest points
-    "CIRCLE_TOP":   to_px(LENGTH_M/2, WIDTH_M/2 - 9.15),
-    "CIRCLE_LEFT":  to_px(LENGTH_M/2 - 9.15, WIDTH_M/2),
-    "CIRCLE_RIGHT": to_px(LENGTH_M/2 + 9.15, WIDTH_M/2),
+    "CIRCLE_TOP":    to_px(LENGTH_M/2, WIDTH_M/2 - 9.15),
+    "CIRCLE_BOTTOM": to_px(LENGTH_M/2, WIDTH_M/2 + 9.15),
+    "CIRCLE_LEFT":   to_px(LENGTH_M/2 - 9.15, WIDTH_M/2),
+    "CIRCLE_RIGHT":  to_px(LENGTH_M/2 + 9.15, WIDTH_M/2),
 
     # ----------------------------------------
     # 3. Left Penalty Area - X = 0 ~ 16.5
@@ -145,6 +146,6 @@ YOLO_INDEX_MAP = {
     # Center circle
     22: "CIRCLE_TOP",
     23: "CIRCLE_LEFT",
-    24: "CENTER_SPOT",
+    24: "CIRCLE_BOTTOM",
     25: "CIRCLE_RIGHT",
 }

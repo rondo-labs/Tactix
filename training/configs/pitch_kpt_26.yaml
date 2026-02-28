@@ -31,7 +31,7 @@ kpt_shape: [26, 3]  # [num_keypoints, dim (x, y, visibility)]
 #   19(L_GA_BOT_CORNER) <-> 21(R_GA_BOT_CORNER)
 #   22(CIRCLE_TOP) self
 #   23(CIRCLE_LEFT) <-> 25(CIRCLE_RIGHT)
-#   24(CENTER_SPOT) self
+#   24(CIRCLE_BOTTOM) self
 flip_idx: [
   2, 1, 0,
   13, 12, 11, 10,

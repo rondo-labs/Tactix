@@ -31,9 +31,10 @@ WORLD_POINTS = {
     "CENTER_SPOT": [L/2, W/2],
 
     # Center circle
-    "CIRCLE_TOP":   [L/2, W/2 - 9.15],
-    "CIRCLE_LEFT":  [L/2 - 9.15, W/2],
-    "CIRCLE_RIGHT": [L/2 + 9.15, W/2],
+    "CIRCLE_TOP":    [L/2, W/2 - 9.15],
+    "CIRCLE_BOTTOM": [L/2, W/2 + 9.15],
+    "CIRCLE_LEFT":   [L/2 - 9.15, W/2],
+    "CIRCLE_RIGHT":  [L/2 + 9.15, W/2],
 
     # Left Penalty Area
     "L_PA_TOP_LINE":      [0, 13.84],
