@@ -40,31 +40,39 @@ class CameraSmoother:
 
 
 class CameraTracker:
-    def __init__(self, initial_keypoints: np.ndarray = None, smoothing_window=5):
+    def __init__(self, initial_keypoints: np.ndarray = None, smoothing_window: int = 5,
+                 max_drift_frames: int = 20, blend_alpha: float = 0.7):
         """
         Initializes the camera tracker.
         :param initial_keypoints: Initial keypoint coordinates (N, 2), if None, waits for first update to initialize
         :param smoothing_window: Size of the smoothing window
+        :param max_drift_frames: Max consecutive optical flow frames before forced recalibration
+        :param blend_alpha: Weight for new YOLO detection in soft_reset blend (0-1)
         """
         self.current_keypoints: Optional[np.ndarray] = None
         self._num_points: int = 0
         if initial_keypoints is not None:
             self.current_keypoints = initial_keypoints.astype(np.float32).reshape(-1, 1, 2)
             self._num_points = len(initial_keypoints)
-            
+
         self.prev_gray: Optional[np.ndarray] = None
-        
+
         # Optical Flow parameters (LK Optical Flow)
         self.lk_params = dict(
             winSize=(20, 20),
             maxLevel=2,
             criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03)
         )
-        
+
         # Initialize smoother
         self.smoother = CameraSmoother(window_size=smoothing_window)
         # Track which original indices are still alive
         self._alive_mask: Optional[np.ndarray] = None
+
+        # Drift detection: count consecutive frames running on optical flow only
+        self._consecutive_flow_frames: int = 0
+        self._max_drift_frames: int = max_drift_frames
+        self._blend_alpha: float = blend_alpha
 
     def reset(self, keypoints: np.ndarray, frame: np.ndarray):
         """
@@ -74,6 +82,7 @@ class CameraTracker:
         self._num_points = len(keypoints)
         self.prev_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         self._alive_mask = np.ones(self._num_points, dtype=bool)
+        self._consecutive_flow_frames = 0
         # Reset smoother history to avoid old datasets dragging down new position accuracy
         self.smoother = CameraSmoother(window_size=self.smoother.window_size)
         self.smoother.update(keypoints) # Immediately push current value
@@ -81,13 +90,15 @@ class CameraTracker:
     def soft_reset(self, keypoints: np.ndarray, frame: np.ndarray):
         """
         Gently updates tracking points from YOLO without destroying smoother history.
-        Replaces tracked positions with new YOLO detections while preserving the
-        smoothing window — avoids the "jump" that a hard reset causes.
+        Uses weighted blending between YOLO detections and tracked positions to
+        avoid the "jump" that a hard reset causes.
         """
         new_pts = keypoints.astype(np.float32).reshape(-1, 1, 2)
         if self.current_keypoints is not None and len(new_pts) == len(self.current_keypoints):
-            # Same shape — blend in-place, keep smoother
-            self.current_keypoints = new_pts
+            # Same shape — weighted blend, keep smoother
+            self.current_keypoints = (
+                self._blend_alpha * new_pts + (1.0 - self._blend_alpha) * self.current_keypoints
+            )
         else:
             # Shape changed — must hard reset
             self.current_keypoints = new_pts
@@ -96,13 +107,21 @@ class CameraTracker:
             self.smoother.update(keypoints)
         self.prev_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         self._alive_mask = np.ones(len(new_pts), dtype=bool)
+        self._consecutive_flow_frames = 0
 
     def update(self, frame: np.ndarray) -> Optional[np.ndarray]:
         """
         Takes the current frame, calculates new positions using Optical Flow, and returns smoothed results.
-        Returns None if not initialized.
+        Returns None if not initialized or if drift limit exceeded.
         """
         if self.current_keypoints is None:
+            return None
+
+        # Drift guard: if optical flow has been running too long without YOLO reset,
+        # accumulated error is too high — force recalibration
+        self._consecutive_flow_frames += 1
+        if self._consecutive_flow_frames > self._max_drift_frames:
+            print(f"⚠️ Optical flow drift limit reached ({self._max_drift_frames} frames), requesting recalibration")
             return None
 
         frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)

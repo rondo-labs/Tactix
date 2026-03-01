@@ -84,10 +84,17 @@ class TactixEngine:
                 model_weights=self.cfg.PLAYER_MODEL_PATH,
                 device=self.cfg.DEVICE,
                 conf_threshold=self.cfg.CONF_PLAYER,
-                iou_threshold=0.7
+                iou_threshold=0.7,
+                enable_ball_slicer=self.cfg.ENABLE_BALL_SLICER,
+                ball_slicer_wh=self.cfg.BALL_SLICER_WH,
+                ball_slicer_overlap=self.cfg.BALL_SLICER_OVERLAP,
             )
         self.tracker = Tracker()
-        self.camera_tracker = CameraTracker(smoothing_window=5)
+        self.camera_tracker = CameraTracker(
+            smoothing_window=5,
+            max_drift_frames=self.cfg.OPTICAL_FLOW_MAX_DRIFT_FRAMES,
+            blend_alpha=self.cfg.OPTICAL_FLOW_BLEND_ALPHA,
+        )
 
         # ==========================================
         # 2. Logic Modules
@@ -96,7 +103,17 @@ class TactixEngine:
             smooth_enabled=self.cfg.HOMOGRAPHY_SMOOTH_ENABLED,
             min_cutoff=self.cfg.HOMOGRAPHY_MIN_CUTOFF,
             beta=self.cfg.HOMOGRAPHY_BETA,
+            max_jump=self.cfg.HOMOGRAPHY_MAX_JUMP,
+            ransac_threshold=self.cfg.RANSAC_REPROJ_THRESHOLD,
         )
+        self.embedding_classifier = None
+        if self.cfg.USE_EMBEDDING_CLASSIFIER:
+            try:
+                from tactix.semantics.embedding_team import EmbeddingTeamClassifier
+                self.embedding_classifier = EmbeddingTeamClassifier(device=self.cfg.DEVICE)
+            except ImportError as e:
+                print(f"⚠️  Embedding classifier unavailable: {e}")
+                print("    Falling back to color-based classifier.")
         self.team_classifier = TeamClassifier(device=self.cfg.DEVICE)
         # Jersey OCR (with graceful degradation if easyocr not installed)
         self.jersey_ocr = self._init_jersey_ocr()
@@ -230,7 +247,10 @@ class TactixEngine:
         print(f"🎨 Pre-scanning {len(indices)} frames for team colors...")
 
         cap = cv2.VideoCapture(self.cfg.INPUT_VIDEO)
-        all_colors: list[np.ndarray] = []
+        # Collect paired (color, crop) so SigLIP labels can seed color KMeans
+        paired_colors: list[np.ndarray] = []
+        paired_crops: list[np.ndarray] = []
+        solo_colors: list[np.ndarray] = []  # Colors without a paired crop
 
         for idx in tqdm(indices, desc="Pre-scan"):
             cap.set(cv2.CAP_PROP_POS_FRAMES, int(idx))
@@ -247,19 +267,50 @@ class TactixEngine:
 
             for p in outfield:
                 color = self.team_classifier._extract_shirt_color(frame, p.rect)
-                if color is not None:
-                    all_colors.append(color)
+                if color is None:
+                    continue
+
+                if self.embedding_classifier is not None:
+                    crop = self.embedding_classifier._extract_crop(frame, p.rect)
+                    if crop is not None:
+                        paired_colors.append(color)
+                        paired_crops.append(crop)
+                        continue
+
+                solo_colors.append(color)
 
         cap.release()
 
+        all_colors = paired_colors + solo_colors
         if not all_colors:
             print("⚠️  Pre-scan collected no colors — will fall back to per-frame training.")
             return
 
+        # Try SigLIP-guided initialization first
+        if self.embedding_classifier is not None and len(paired_crops) >= 4:
+            try:
+                emb_ok = self.embedding_classifier.fit_from_crops(paired_crops)
+                if emb_ok:
+                    result = self.embedding_classifier.get_team_color_means(paired_colors)
+                    if result:
+                        center_a, center_b = result
+                        ok = self.team_classifier.fit_with_centers(all_colors, center_a, center_b)
+                        if ok:
+                            self.classifier_trained = True
+                            n_total = len(paired_colors) + len(solo_colors)
+                            print(f"🧠+🎨 SigLIP-guided color classifier ready ({n_total} samples)")
+                            # Unload SigLIP weights — not needed at runtime
+                            self.embedding_classifier.unload()
+                            return
+            except Exception as e:
+                print(f"⚠️  Embedding classifier error: {e} — falling back to standard color K-Means.")
+            self.embedding_classifier = None
+
+        # Fallback: standard color KMeans
         ok = self.team_classifier.fit_from_colors(all_colors)
         if ok:
             self.classifier_trained = True
-            print(f"🎨 Pre-scan complete: classifier ready ({len(all_colors)} samples from {len(indices)} frames)")
+            print(f"🎨 Pre-scan complete: color classifier ready ({len(all_colors)} samples from {len(indices)} frames)")
         else:
             print("⚠️  Pre-scan K-Means failed — will fall back to per-frame training.")
 
@@ -271,10 +322,14 @@ class TactixEngine:
         # === Pre-scan: learn team colors from the whole video ===
         self._prescan_team_colors(video_info)
 
+        # === Propagate actual FPS to all components ===
+        fps = float(video_info.fps) if video_info.fps else 25.0
+        self.transformer.set_fps(fps)
+        self.tracker.set_fps(fps)
+
         # Initialize STF exporter here (needs video FPS from video_info)
         if self.cfg.EXPORT_STF:
-            fps = int(video_info.fps) if video_info.fps else 25
-            self.stf_exporter = StfExporter(self.cfg.OUTPUT_STF_DIR, self.cfg, fps=fps)
+            self.stf_exporter = StfExporter(self.cfg.OUTPUT_STF_DIR, self.cfg, fps=int(fps))
             print(f"⚽ FIFA STF Export Enabled: {self.cfg.OUTPUT_STF_DIR}")
 
         print(f"▶️ Processing: {self.cfg.INPUT_VIDEO}")
@@ -329,7 +384,7 @@ class TactixEngine:
             tracked = self.camera_tracker.update(frame)
             if tracked is not None:
                 active_keypoints = tracked
-                keypoint_confidences = np.ones(len(active_keypoints))
+                keypoint_confidences = np.full(len(active_keypoints), self.cfg.OPTICAL_FLOW_CONFIDENCE)
 
         if active_keypoints is None:
             return None, None, False
@@ -385,10 +440,10 @@ class TactixEngine:
                 continue
 
             if self.player_registry.is_confirmed(pid):
-                # Stable assignment already locked in — no need to re-run K-Means
+                # Stable assignment already locked in — no need to re-run classifier
                 p.team = self.player_registry.get_team(pid)
             else:
-                # Still accumulating evidence: extract color, vote, apply best guess
+                # Still accumulating evidence: color classifier only (SigLIP is prescan-only)
                 color = self.team_classifier._extract_shirt_color(frame, p.rect)
                 if color is not None:
                     self.player_registry.record_color_sample(pid, color)

@@ -124,6 +124,21 @@ class Config:
     HOMOGRAPHY_MIN_CUTOFF: float = 1.0    # Lower = smoother when camera is still
     HOMOGRAPHY_BETA: float = 0.007        # Higher = less lag during fast pans
 
+    # === Calibration Robustness ===
+    HOMOGRAPHY_MAX_JUMP: float = 0.4            # Max allowed relative change between frames
+    RANSAC_REPROJ_THRESHOLD: float = 3.0        # RANSAC reprojection threshold (pixels)
+    OPTICAL_FLOW_CONFIDENCE: float = 0.65       # Confidence assigned to optically-tracked points
+    OPTICAL_FLOW_MAX_DRIFT_FRAMES: int = 20     # Max consecutive optical flow frames before forced recalibration
+    OPTICAL_FLOW_BLEND_ALPHA: float = 0.7       # soft_reset blend: weight for new YOLO detection
+
+    # === Ball Detection (InferenceSlicer) ===
+    ENABLE_BALL_SLICER: bool = True
+    BALL_SLICER_WH: tuple = (640, 640)
+    BALL_SLICER_OVERLAP: float = 0.2
+
+    # === Embedding Team Classifier ===
+    USE_EMBEDDING_CLASSIFIER: bool = True
+
     # === Zone Definitions (meters) ===
     # Zone 14: area directly in front of the penalty box
     ZONE_14: tuple = (77, 88, 25, 43)       # (x_min, x_max, y_min, y_max)

@@ -18,8 +18,8 @@ from tactix.core.keypoints import YOLO_INDEX_MAP
 
 # ── Config ────────────────────────────────────────────────────────────────────
 cfg = Config()
-INPUT_VIDEO  = "assets/samples/test1.mp4"
-OUTPUT_VIDEO = "assets/output/test_pitch_detection.mp4"
+INPUT_VIDEO  = "assets/samples/Arsenal 2-3 Manchester United – Tactical Cam Highlights Premier League 25012026_1080p.mp4"
+OUTPUT_VIDEO = "assets/output/Arsenal 2-3 Manchester United – Tactical Cam Highlights Premier League 25012026_1080p_test_pitch_detection.mp4"
 CONF_THRESH  = cfg.CONF_PITCH   # 0.3 — same threshold the engine uses
 FRAME_SKIP   = 1                # process every frame (set >1 to go faster)
 

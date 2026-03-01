@@ -18,7 +18,15 @@ from tactix.core.geometry import WORLD_POINTS
 from tactix.vision.filters import OneEuroFilter
 
 class ViewTransformer:
-    def __init__(self, smooth_enabled: bool = True, min_cutoff: float = 1.0, beta: float = 0.007):
+    def __init__(
+        self,
+        smooth_enabled: bool = True,
+        min_cutoff: float = 1.0,
+        beta: float = 0.007,
+        fps: float = 30.0,
+        max_jump: float = 0.4,
+        ransac_threshold: float = 3.0,
+    ):
         self.homography_matrix = None
         self.scale_x = PitchConfig.PIXEL_WIDTH / PitchConfig.LENGTH
         self.scale_y = PitchConfig.PIXEL_HEIGHT / PitchConfig.WIDTH
@@ -28,6 +36,18 @@ class ViewTransformer:
         self._h_filter: Optional[OneEuroFilter] = None
         self._min_cutoff = min_cutoff
         self._beta = beta
+        self._fps = fps
+
+        # Robustness parameters
+        self._max_jump = max_jump
+        self._ransac_threshold = ransac_threshold
+        self._prev_raw_h: Optional[np.ndarray] = None
+
+    def set_fps(self, fps: float) -> None:
+        """Update the FPS used by the OneEuroFilter. Call before processing starts."""
+        self._fps = fps
+        # Reset filter so it reinitializes with the correct rate
+        self._h_filter = None
 
     def update(self, keypoints: np.ndarray, confs: np.ndarray, threshold: float = 0.5) -> bool:
         """
@@ -60,18 +80,36 @@ class ViewTransformer:
         dst_arr = np.array(dst_pts).reshape(-1, 1, 2)
 
         # RANSAC Calculation
+        n_src = len(src_pts)
+        h, mask = cv2.findHomography(src_arr, dst_arr, cv2.RANSAC, self._ransac_threshold)
 
-        h, mask = cv2.findHomography(src_arr, dst_arr, cv2.RANSAC, 5.0)
-        
         if h is not None:
-             # Secondary validation
-             inliers = np.sum(mask)
-             if inliers >= 4:
-                 if self._smooth_enabled:
-                     self.homography_matrix = self._smooth_homography(h)
-                 else:
-                     self.homography_matrix = h
-                 return True
+            inliers = int(np.sum(mask))
+            min_inliers = max(6, int(n_src * 0.5))
+
+            # Validate: enough inliers
+            if inliers < min_inliers:
+                return self.homography_matrix is not None
+
+            # Validate: condition number (reject degenerate matrices)
+            cond = np.linalg.cond(h)
+            if cond > 1e5:
+                return self.homography_matrix is not None
+
+            # Validate: frame-to-frame consistency (reject sudden jumps)
+            if self._prev_raw_h is not None:
+                prev_norm = np.linalg.norm(self._prev_raw_h)
+                if prev_norm > 0:
+                    relative_diff = np.linalg.norm(h - self._prev_raw_h) / prev_norm
+                    if relative_diff > self._max_jump:
+                        return self.homography_matrix is not None
+
+            self._prev_raw_h = h.copy()
+            if self._smooth_enabled:
+                self.homography_matrix = self._smooth_homography(h)
+            else:
+                self.homography_matrix = h
+            return True
         
         # If new calculation is bad, continue using old one
         return self.homography_matrix is not None
@@ -87,7 +125,7 @@ class ViewTransformer:
             # First valid matrix — initialize the filter
             self._h_filter = OneEuroFilter(
                 ndim=9,
-                rate=30.0,  # assumed video fps
+                rate=self._fps,
                 min_cutoff=self._min_cutoff,
                 beta=self._beta,
             )
