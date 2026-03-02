@@ -205,6 +205,7 @@
   <span class="sep"></span>
   <span class="meta-tag" id="meta-fps">–</span>
   <span class="meta-tag" id="meta-frames">–</span>
+  <button id="demo-btn" style="background:var(--surface);color:var(--text-muted);border:1px solid var(--border);border-radius:6px;padding:5px 14px;font-size:12px;cursor:pointer;">Demo</button>
   <button id="file-btn">Load JSON</button>
   <input type="file" id="file-input" accept=".json">
 </div>
@@ -394,29 +395,35 @@ function drawPitch() {
   penSpot(11);
   penSpot(PITCH.L - 11);
 
-  // Penalty arcs (radius 9.15m, only outside the penalty area)
+  // Penalty arcs (radius 9.15m, only the part outside the penalty area)
+  // cos(halfAngle) = (penEdge - spotX) / r = 5.5 / 9.15
+  const penHalf = Math.acos(5.5 / 9.15); // ≈ 0.929 rad ≈ 53°
   function penArc(centreX) {
     const [px, py] = m2px(centreX, 34);
-    const areaEdge = centreX < 52.5 ? ms(16.5) : -ms(16.5);
-    const startAngle = centreX < 52.5 ?  Math.PI * 0.82 : Math.PI * 1.18;
-    const endAngle   = centreX < 52.5 ?  Math.PI * 1.18 : Math.PI * 0.82;
     ctx.beginPath();
-    ctx.arc(px, py, ms(9.15), startAngle, endAngle, centreX < 52.5);
+    if (centreX < 52.5) {
+      // Left spot: visible arc faces right (toward centre)
+      ctx.arc(px, py, ms(9.15), -penHalf, penHalf, false);
+    } else {
+      // Right spot: visible arc faces left (toward centre)
+      ctx.arc(px, py, ms(9.15), Math.PI - penHalf, Math.PI + penHalf, false);
+    }
     ctx.stroke();
   }
   penArc(11);
   penArc(PITCH.L - 11);
 
   // Corner arcs (r=1m)
+  // Each arc is centred on a corner and sweeps inward onto the pitch
   const corners = [[0,0],[PITCH.L,0],[0,PITCH.W],[PITCH.L,PITCH.W]];
   const cAngles  = [
-    [0,           Math.PI/2],
-    [Math.PI/2,   Math.PI],
-    [-Math.PI/2,  0],
-    [Math.PI,     Math.PI*1.5],
+    [0,            Math.PI / 2],   // top-left  → sweep 0°→90°
+    [Math.PI / 2,  Math.PI],       // top-right → sweep 90°→180°
+    [-Math.PI / 2, 0],             // bot-left  → sweep -90°→0°
+    [Math.PI,      Math.PI * 1.5], // bot-right → sweep 180°→270°
   ];
-  corners.forEach(([mx,my],[sa,ea], i) => {
-    const [px,py] = m2px(mx, my);
+  corners.forEach(([mx, my], i) => {
+    const [px, py] = m2px(mx, my);
     ctx.beginPath();
     ctx.arc(px, py, ms(1), cAngles[i][0], cAngles[i][1]);
     ctx.stroke();
@@ -837,6 +844,113 @@ document.addEventListener('keydown', e => {
 // Resize
 window.addEventListener('resize', () => {
   if (data) render();
+});
+
+// ─────────────────────────────────────────────────
+// Demo data generator
+// Produces synthetic tracking data so the viewer can
+// be tested without running the full Python pipeline.
+// Coordinates are in minimap pixel space (1559×1010).
+// ─────────────────────────────────────────────────
+function generateDemoData() {
+  const FPS      = 25;
+  const DURATION = 30;     // seconds
+  const TOTAL    = FPS * DURATION;
+  const CW = 1559, CH = 1010;   // reference canvas size
+  // Scale: metres → pixels
+  const sx = CW / 105, sy = CH / 68;
+
+  // Base formation positions in metres
+  // Team A (red): attacking left→right
+  const baseA = [
+    { id:  1, team:'A',  jersey:'1',  x:  4, y:34 },  // GK
+    { id:  2, team:'A',  jersey:'2',  x: 22, y:12 },
+    { id:  3, team:'A',  jersey:'5',  x: 22, y:28 },
+    { id:  4, team:'A',  jersey:'6',  x: 22, y:44 },
+    { id:  5, team:'A',  jersey:'3',  x: 22, y:60 },
+    { id:  6, team:'A',  jersey:'8',  x: 42, y:22 },
+    { id:  7, team:'A',  jersey:'10', x: 42, y:34 },
+    { id:  8, team:'A',  jersey:'4',  x: 42, y:50 },
+    { id:  9, team:'A',  jersey:'11', x: 65, y:16 },
+    { id: 10, team:'A',  jersey:'9',  x: 65, y:34 },
+    { id: 11, team:'A',  jersey:'7',  x: 65, y:56 },
+  ];
+  // Team B (blue): defending right→left
+  const baseB = [
+    { id: 12, team:'B',  jersey:'1',  x:101, y:34 },  // GK
+    { id: 13, team:'B',  jersey:'2',  x: 83, y:12 },
+    { id: 14, team:'B',  jersey:'5',  x: 83, y:28 },
+    { id: 15, team:'B',  jersey:'6',  x: 83, y:44 },
+    { id: 16, team:'B',  jersey:'3',  x: 83, y:60 },
+    { id: 17, team:'B',  jersey:'8',  x: 63, y:16 },
+    { id: 18, team:'B',  jersey:'10', x: 63, y:30 },
+    { id: 19, team:'B',  jersey:'4',  x: 63, y:44 },
+    { id: 20, team:'B',  jersey:'11', x: 63, y:58 },
+    { id: 21, team:'B',  jersey:'9',  x: 78, y:25 },
+    { id: 22, team:'B',  jersey:'7',  x: 78, y:48 },
+  ];
+  const allBase = [...baseA, ...baseB];
+
+  // Each player gets a unique random phase + amplitude for organic movement
+  const phases = allBase.map(() => ({
+    px: Math.random() * Math.PI * 2,
+    py: Math.random() * Math.PI * 2,
+    ax: 2 + Math.random() * 3,   // metres
+    ay: 1 + Math.random() * 2,
+    fx: 0.08 + Math.random() * 0.12,  // Hz
+    fy: 0.06 + Math.random() * 0.10,
+  }));
+
+  const frames = [];
+  for (let f = 0; f < TOTAL; f++) {
+    const t = f / FPS;
+    const players = allBase.map((p, i) => {
+      const ph = phases[i];
+      const dx = Math.sin(2 * Math.PI * ph.fx * t + ph.px) * ph.ax;
+      const dy = Math.sin(2 * Math.PI * ph.fy * t + ph.py) * ph.ay;
+      const nx = Math.max(1, Math.min(104, p.x + dx));
+      const ny = Math.max(1, Math.min(67,  p.y + dy));
+      // velocity in m/s via finite difference scaled to pixels
+      const vx_m = Math.cos(2 * Math.PI * ph.fx * t + ph.px) * ph.ax * 2 * Math.PI * ph.fx;
+      const vy_m = Math.cos(2 * Math.PI * ph.fy * t + ph.py) * ph.ay * 2 * Math.PI * ph.fy;
+      return {
+        id:     p.id,
+        team:   p.team,
+        jersey: p.jersey,
+        x:      Math.round(nx * sx * 10) / 10,
+        y:      Math.round(ny * sy * 10) / 10,
+        vx:     Math.round(vx_m * sx * 100) / 100,
+        vy:     Math.round(vy_m * sy * 100) / 100,
+        speed:  Math.round(Math.sqrt(vx_m*vx_m + vy_m*vy_m) * 10) / 10,
+      };
+    });
+
+    // Ball: simple elliptical path around centre circle
+    const bt  = t * 0.25;  // 1 lap per ~25s
+    const bx  = 52.5 + Math.cos(bt * 2 * Math.PI) * 18;
+    const by  = 34   + Math.sin(bt * 2 * Math.PI) * 10;
+    const ball = {
+      x: Math.round(bx * sx * 10) / 10,
+      y: Math.round(by * sy * 10) / 10,
+    };
+
+    frames.push({ i: f, players, ball });
+  }
+
+  return {
+    meta: {
+      fps: FPS,
+      total_frames: TOTAL,
+      canvas: { width: CW, height: CH },
+      pitch:  { length: 105, width: 68 },
+    },
+    frames,
+  };
+}
+
+document.getElementById('demo-btn').addEventListener('click', () => {
+  loadData(generateDemoData());
+  setPlaying(true);
 });
 
 // Initial draw (empty pitch)
