@@ -37,6 +37,7 @@ from tactix.visualization.minimap import MinimapRenderer
 from tactix.vision.camera import CameraTracker
 from tactix.export.pdf_exporter import PdfReportExporter
 from tactix.export.stf_exporter import StfExporter
+from tactix.export.json_exporter import ViewerJsonExporter
 from tactix.analytics.events.event_detector import EventDetector
 from tactix.analytics.attacking.shot_map import ShotMap
 from tactix.analytics.attacking.zone_analyzer import ZoneAnalyzer
@@ -138,7 +139,8 @@ class TactixEngine:
             print(f"📄 PDF Report Enabled: {self.cfg.OUTPUT_PDF}")
             self.pdf_exporter = PdfReportExporter(self.cfg.OUTPUT_PDF, self.cfg)
 
-        self.stf_exporter = None  # Initialized in run() once FPS is known
+        self.stf_exporter = None       # Initialized in run() once FPS is known
+        self.json_exporter = None      # Initialized in run() once FPS is known
 
         # State
         self.classifier_trained = False
@@ -332,6 +334,10 @@ class TactixEngine:
             self.stf_exporter = StfExporter(self.cfg.OUTPUT_STF_DIR, self.cfg, fps=int(fps))
             print(f"⚽ FIFA STF Export Enabled: {self.cfg.OUTPUT_STF_DIR}")
 
+        if self.cfg.EXPORT_VIEWER_JSON:
+            self.json_exporter = ViewerJsonExporter(self.cfg.OUTPUT_VIEWER_JSON, self.cfg, fps=fps)
+            print(f"🌐 Viewer JSON Export Enabled: {self.cfg.OUTPUT_VIEWER_JSON}")
+
         print(f"▶️ Processing: {self.cfg.INPUT_VIDEO}")
         print(f"   - Total Frames: {video_info.total_frames}")
         print(f"   - Resolution: {video_info.width}x{video_info.height}")
@@ -357,11 +363,15 @@ class TactixEngine:
                     self.pdf_exporter.add_frame(frame_data)
                 if self.stf_exporter:
                     self.stf_exporter.add_frame(frame_data)
+                if self.json_exporter:
+                    self.json_exporter.add_frame(frame_data)
 
         if self.pdf_exporter:
             self.pdf_exporter.save()
         if self.stf_exporter:
             self.stf_exporter.save(player_registry=self.player_registry)
+        if self.json_exporter:
+            self.json_exporter.save()
 
         print(f"✅ Done! Saved to {self.cfg.OUTPUT_VIDEO}")
 
