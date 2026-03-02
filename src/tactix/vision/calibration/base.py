@@ -27,8 +27,8 @@ class BasePitchEstimator(ABC):
             
         Returns:
             Tuple containing:
-            - keypoints_xy: np.ndarray of shape (27, 2) containing (x, y) coordinates.
-            - confidences: np.ndarray of shape (27,) containing confidence scores (0.0 - 1.0).
+            - keypoints_xy: np.ndarray of shape (26, 2) containing (x, y) coordinates.
+            - confidences: np.ndarray of shape (26,) containing confidence scores (0.0 - 1.0).
             
             Returns (None, None) if estimation fails.
         """

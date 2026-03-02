@@ -378,13 +378,20 @@ class TactixEngine:
         active_keypoints = None
 
         if pitch_keypoints is not None and len(pitch_keypoints) >= 4:
-            self.camera_tracker.soft_reset(pitch_keypoints, frame)
+            self.camera_tracker.soft_reset(pitch_keypoints, frame,
+                                           confs=keypoint_confidences,
+                                           conf_threshold=self.cfg.CONF_PITCH)
             active_keypoints = pitch_keypoints
         else:
-            tracked = self.camera_tracker.update(frame)
-            if tracked is not None:
-                active_keypoints = tracked
-                keypoint_confidences = np.full(len(active_keypoints), self.cfg.OPTICAL_FLOW_CONFIDENCE)
+            result = self.camera_tracker.update(frame)
+            if result is not None:
+                tracked_pts, kpt_indices = result
+                # Rebuild full 26-point array with correct index alignment
+                active_keypoints = np.zeros((26, 2), dtype=np.float32)
+                keypoint_confidences = np.zeros(26, dtype=np.float32)
+                for pt, idx in zip(tracked_pts, kpt_indices):
+                    active_keypoints[idx] = pt
+                    keypoint_confidences[idx] = self.cfg.OPTICAL_FLOW_CONFIDENCE
 
         if active_keypoints is None:
             return None, None, False
