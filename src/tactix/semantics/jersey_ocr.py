@@ -49,18 +49,22 @@ class JerseyOCR:
         """
         self.languages = languages or ['en']
         self.gpu = gpu if gpu is not None else (device in ('cuda', 'mps'))
-        self._reader = None  # Lazy-loaded on first detect() call
-        
-    def _ensure_reader(self) -> None:
-        """Lazy-load EasyOCR reader on first use."""
+        self._reader = None   # Lazy-loaded on first detect() call
+        self._unavailable = False  # Set to True if easyocr is not installed
+
+    def _ensure_reader(self) -> bool:
+        """Lazy-load EasyOCR reader on first use. Returns False if unavailable."""
+        if self._unavailable:
+            return False
         if self._reader is None:
             try:
                 import easyocr
                 self._reader = easyocr.Reader(self.languages, gpu=self.gpu)
             except ImportError:
-                raise ImportError(
-                    "EasyOCR not installed. Run: pip install easyocr>=1.7.1"
-                )
+                self._unavailable = True
+                print("⚠️  EasyOCR not installed — jersey OCR disabled. Run: uv sync --extra ocr")
+                return False
+        return True
     
     def detect(
         self,
@@ -81,8 +85,9 @@ class JerseyOCR:
         Returns:
             Detected jersey number as string (e.g., "10", "7"), or None if no valid result
         """
-        self._ensure_reader()
-        
+        if not self._ensure_reader():
+            return None
+
         x1, y1, x2, y2 = map(int, bbox)
         h, w = y2 - y1, x2 - x1
         

@@ -42,49 +42,51 @@ KEY_POINTS = {
     # ----------------------------------------
     # 1. Four Corners
     # ----------------------------------------
-    "TL_CORNER": to_px(0, 0),             # Top-Left
-    "BL_CORNER": to_px(0, WIDTH_M),       # Bottom-Left
-    "TR_CORNER": to_px(LENGTH_M, 0),      # Top-Right
-    "BR_CORNER": to_px(LENGTH_M, WIDTH_M),# Bottom-Right
+    "TL_CORNER": to_px(0, 0),              # Top-Left
+    "BL_CORNER": to_px(0, WIDTH_M),        # Bottom-Left
+    "TR_CORNER": to_px(LENGTH_M, 0),       # Top-Right
+    "BR_CORNER": to_px(LENGTH_M, WIDTH_M), # Bottom-Right
 
     # ----------------------------------------
     # 2. Midfield Area
     # ----------------------------------------
-    "MID_TOP":    to_px(LENGTH_M/2, 0),       # Midline Top
-    "MID_BOTTOM": to_px(LENGTH_M/2, WIDTH_M), # Midline Bottom
-    "CENTER_SPOT":to_px(LENGTH_M/2, WIDTH_M/2), # Center Spot
-    
-    # Center Circle Intersections (Radius 9.15m)
+    "MID_TOP":     to_px(LENGTH_M/2, 0),         # Midline Top
+    "MID_BOTTOM":  to_px(LENGTH_M/2, WIDTH_M),   # Midline Bottom
+    "CENTER_SPOT": to_px(LENGTH_M/2, WIDTH_M/2), # Center Spot
+
+    # Center Circle: midline intersection (top) + left/right widest points
     "CIRCLE_TOP":    to_px(LENGTH_M/2, WIDTH_M/2 - 9.15),
     "CIRCLE_BOTTOM": to_px(LENGTH_M/2, WIDTH_M/2 + 9.15),
+    "CIRCLE_LEFT":   to_px(LENGTH_M/2 - 9.15, WIDTH_M/2),
+    "CIRCLE_RIGHT":  to_px(LENGTH_M/2 + 9.15, WIDTH_M/2),
 
     # ----------------------------------------
     # 3. Left Penalty Area - X = 0 ~ 16.5
     # ----------------------------------------
-    # Penalty Area (Width 40.32m, Distance from sideline 13.84m)
-    "L_PA_TOP_LINE":    to_px(0, 13.84),        # Top line intersection with goal line
-    "L_PA_TOP_CORNER":  to_px(16.5, 13.84),     # Left PA Top-Right Corner (Common!)
-    "L_PA_BOTTOM_CORNER":to_px(16.5, 68-13.84), # Left PA Bottom-Right Corner (Common!)
-    "L_PA_BOTTOM_LINE": to_px(0, 68-13.84),     # Bottom line intersection with goal line
-    "L_PENALTY_SPOT":   to_px(11.0, 34.0),      # Left Penalty Spot
+    "L_PA_TOP_LINE":      to_px(0, 13.84),        # Goal line / PA top
+    "L_PA_TOP_CORNER":    to_px(16.5, 13.84),     # PA top inner corner
+    "L_PA_BOTTOM_CORNER": to_px(16.5, 68-13.84),  # PA bottom inner corner
+    "L_PA_BOTTOM_LINE":   to_px(0, 68-13.84),     # Goal line / PA bottom
 
-    # Goal Area (Width 18.32m, Distance from sideline 24.84m, Depth 5.5m)
-    "L_GA_TOP_CORNER":    to_px(5.5, 24.84),    # Left GA Top-Right Corner
-    "L_GA_BOTTOM_CORNER": to_px(5.5, 68-24.84), # Left GA Bottom-Right Corner
+    # Left Goal Area (6-yard box)
+    "L_GA_TOP_LINE":      to_px(0, 24.84),        # Goal line / GA top
+    "L_GA_TOP_CORNER":    to_px(5.5, 24.84),      # GA top inner corner
+    "L_GA_BOTTOM_CORNER": to_px(5.5, 68-24.84),   # GA bottom inner corner
+    "L_GA_BOTTOM_LINE":   to_px(0, 68-24.84),     # Goal line / GA bottom
 
     # ----------------------------------------
     # 4. Right Penalty Area - X = 88.5 ~ 105
     # ----------------------------------------
-    # Calculation Logic: X = 105 - 16.5 = 88.5
-    "R_PA_TOP_LINE":    to_px(LENGTH_M, 13.84),      # Top line intersection with right goal line
-    "R_PA_TOP_CORNER":  to_px(105-16.5, 13.84),      # Right PA Top-Left Corner (Common!)
-    "R_PA_BOTTOM_CORNER":to_px(105-16.5, 68-13.84),  # Right PA Bottom-Left Corner (Common!)
-    "R_PA_BOTTOM_LINE": to_px(LENGTH_M, 68-13.84),   # Bottom line intersection with right goal line
-    "R_PENALTY_SPOT":   to_px(105-11.0, 34.0),       # Right Penalty Spot
+    "R_PA_TOP_LINE":      to_px(LENGTH_M, 13.84),      # Goal line / PA top
+    "R_PA_TOP_CORNER":    to_px(105-16.5, 13.84),      # PA top inner corner
+    "R_PA_BOTTOM_CORNER": to_px(105-16.5, 68-13.84),   # PA bottom inner corner
+    "R_PA_BOTTOM_LINE":   to_px(LENGTH_M, 68-13.84),   # Goal line / PA bottom
 
-    # Goal Area - X = 105 - 5.5 = 99.5
-    "R_GA_TOP_CORNER":    to_px(105-5.5, 24.84),     # Right GA Top-Left Corner
-    "R_GA_BOTTOM_CORNER": to_px(105-5.5, 68-24.84),  # Right GA Bottom-Left Corner
+    # Right Goal Area (6-yard box)
+    "R_GA_TOP_LINE":      to_px(LENGTH_M, 24.84),      # Goal line / GA top
+    "R_GA_TOP_CORNER":    to_px(105-5.5, 24.84),       # GA top inner corner
+    "R_GA_BOTTOM_CORNER": to_px(105-5.5, 68-24.84),    # GA bottom inner corner
+    "R_GA_BOTTOM_LINE":   to_px(LENGTH_M, 68-24.84),   # Goal line / GA bottom
 }
 
 def get_target_points(keys):
@@ -103,40 +105,47 @@ def get_target_points(keys):
 
 
 # ==========================================
-# 5. YOLO V4 Model Output Mapping (Model Definition)
+# 5. YOLO Model Output Mapping (26-point unified scheme)
 # ==========================================
-# This order must strictly match football-pitch.yaml used during training
+# This order must match pitch_kpt_26.yaml used during training.
+# Indices 0-25 correspond to the 26 keypoints detected by the model.
 YOLO_INDEX_MAP = {
-    0: "CENTER_SPOT",
-    1: "CIRCLE_TOP",         # Circle_Intersect_Top
-    2: "CIRCLE_BOTTOM",      # Circle_Intersect_Bot
-    3: "MID_TOP",            # Mid_Line_Top
-    4: "MID_BOTTOM",         # Mid_Line_Bottom
-    
-    5: "TL_CORNER",          # L_Corner_TL
-    6: "BL_CORNER",          # L_Corner_BL
-    
-    # Left Penalty Area Keypoints
-    7: "L_PA_TOP_CORNER",    # L_Penalty_TL
-    8: "L_PA_BOTTOM_CORNER", # L_Penalty_BL
-    9: "L_PA_TOP_LINE",      # L_Penalty_Line_Top
-    10: "L_PA_BOTTOM_LINE",  # L_Penalty_Line_Bot
-    11: "L_GA_TOP_CORNER",   # L_SixYard_TL
-    12: "L_GA_BOTTOM_CORNER",# L_SixYard_BL
-    13: "L_GA_TOP_LINE",     # L_SixYard_Line_Top (Need to complete in KEY_POINTS or ignore)
-    14: "L_GA_BOTTOM_LINE",  # L_SixYard_Line_Bot (Need to complete in KEY_POINTS or ignore)
-    15: "L_PENALTY_SPOT",
-    
-    # Right Half (Symmetric)
-    16: "TR_CORNER",
-    17: "BR_CORNER",
-    18: "R_PA_TOP_CORNER",
-    19: "R_PA_BOTTOM_CORNER",
-    20: "R_PA_TOP_LINE",
-    21: "R_PA_BOTTOM_LINE",
-    22: "R_GA_TOP_CORNER",
-    23: "R_GA_BOTTOM_CORNER",
-    24: "R_GA_TOP_LINE",
-    25: "R_GA_BOTTOM_LINE",
-    26: "R_PENALTY_SPOT"
+    # Corners
+    0:  "TL_CORNER",
+    1:  "MID_TOP",
+    2:  "TR_CORNER",
+
+    # Left goal line intersections (x = 0)
+    3:  "L_PA_TOP_LINE",
+    4:  "L_GA_TOP_LINE",
+    5:  "L_GA_BOTTOM_LINE",
+    6:  "L_PA_BOTTOM_LINE",
+
+    7:  "BL_CORNER",
+    8:  "MID_BOTTOM",
+    9:  "BR_CORNER",
+
+    # Right goal line intersections (x = 105)
+    10: "R_PA_BOTTOM_LINE",
+    11: "R_GA_BOTTOM_LINE",
+    12: "R_GA_TOP_LINE",
+    13: "R_PA_TOP_LINE",
+
+    # Penalty area inner corners
+    14: "R_PA_TOP_CORNER",
+    15: "R_PA_BOTTOM_CORNER",
+    16: "L_PA_TOP_CORNER",
+    17: "L_PA_BOTTOM_CORNER",
+
+    # Goal area inner corners
+    18: "L_GA_TOP_CORNER",
+    19: "L_GA_BOTTOM_CORNER",
+    20: "R_GA_TOP_CORNER",
+    21: "R_GA_BOTTOM_CORNER",
+
+    # Center circle
+    22: "CIRCLE_TOP",
+    23: "CIRCLE_LEFT",
+    24: "CIRCLE_BOTTOM",
+    25: "CIRCLE_RIGHT",
 }

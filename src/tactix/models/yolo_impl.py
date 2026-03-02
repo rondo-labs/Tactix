@@ -22,7 +22,10 @@ class YOLODetector(BaseDetector):
 		model_weights: str,
 		device: str = 'mps',
 		conf_threshold: float = 0.3,
-		iou_threshold: float = 0.7
+		iou_threshold: float = 0.7,
+		enable_ball_slicer: bool = False,
+		ball_slicer_wh: tuple = (640, 640),
+		ball_slicer_overlap: float = 0.2,
 	):
 		self.model = YOLO(model_weights)
 		self.device = device
@@ -34,6 +37,21 @@ class YOLODetector(BaseDetector):
 			2: 'player',
 			3: 'referee'
 		}
+
+		# InferenceSlicer for small ball detection fallback
+		self._enable_ball_slicer = enable_ball_slicer
+		self._ball_slicer: sv.InferenceSlicer | None = None
+		if enable_ball_slicer:
+			# overlap_wh is in absolute pixels; convert from ratio
+			overlap_px = (
+				int(ball_slicer_wh[0] * ball_slicer_overlap),
+				int(ball_slicer_wh[1] * ball_slicer_overlap),
+			)
+			self._ball_slicer = sv.InferenceSlicer(
+				callback=self._slicer_callback,
+				slice_wh=ball_slicer_wh,
+				overlap_wh=overlap_px,
+			)
 
 	def detect(self, frame: np.ndarray, frame_index: int) -> FrameData:
 		results = self.model(
@@ -96,7 +114,58 @@ class YOLODetector(BaseDetector):
 					best_ball = Ball(rect=rect, score=score)
 		if best_ball:
 			frame_data.ball = best_ball
+		elif self._enable_ball_slicer:
+			# Fallback: try InferenceSlicer for small ball detection
+			slicer_ball = self._slicer_detect_ball(frame, player_boxes)
+			if slicer_ball:
+				frame_data.ball = slicer_ball
 		return frame_data
+
+	def _slicer_callback(self, image_slice: np.ndarray) -> sv.Detections:
+		"""Callback for InferenceSlicer — runs YOLO on each tile."""
+		results = self.model(
+			image_slice,
+			device=self.device,
+			verbose=False,
+			conf=self.conf_threshold,
+			iou=self.iou_threshold,
+		)[0]
+		return sv.Detections.from_ultralytics(results)
+
+	def _slicer_detect_ball(self, frame: np.ndarray, player_boxes: list) -> Ball | None:
+		"""Run InferenceSlicer and return the best ball candidate, if any."""
+		if self._ball_slicer is None:
+			return None
+
+		detections = self._ball_slicer(frame)
+		if detections is None or len(detections) == 0:
+			return None
+
+		best_ball = None
+		best_score = -1.0
+		for i, class_id in enumerate(detections.class_id):
+			if self.CLASS_MAP.get(class_id) != 'ball':
+				continue
+			xyxy = detections.xyxy[i]
+			x1, y1, x2, y2 = xyxy
+			width, height = x2 - x1, y2 - y1
+			area = width * height
+			ratio = width / height if height > 0 else 0
+			if area > 900 or ratio < 0.6 or ratio > 1.5:
+				continue
+			rect = tuple(xyxy.tolist())
+			score = float(detections.confidence[i])
+			# Apply same double-standard filtering
+			ball_x, ball_y = (x1 + x2) / 2, (y1 + y2) / 2
+			is_touching = any(
+				p[0] < ball_x < p[2] and p[1] < ball_y < p[3]
+				for p in player_boxes
+			)
+			threshold = 0.6 if is_touching else 0.1
+			if score > threshold and score > best_score:
+				best_score = score
+				best_ball = Ball(rect=rect, score=score)
+		return best_ball
 
 	def warmup(self) -> None:
 		dummy = np.zeros((720, 1280, 3), dtype=np.uint8)

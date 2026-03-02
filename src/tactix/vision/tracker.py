@@ -16,21 +16,28 @@ import numpy as np
 from collections import deque
 
 class Tracker:
-    def __init__(self):
+    def __init__(self, fps: float = 30.0):
+        self._fps = fps
+        self._dt = 1.0 / fps
         # ByteTrack parameters adapted for latest supervision version
         # track_activation_threshold: Only boxes with confidence > 0.25 are tracked
         # minimum_matching_threshold: Matching similarity threshold
         # lost_track_buffer: Keep ID for 30 frames after loss
         self.tracker = sv.ByteTrack(
-            frame_rate=30,
+            frame_rate=int(fps),
             track_activation_threshold=0.1,
             minimum_matching_threshold=0.8,
             lost_track_buffer=30
         )
-        
+
         # Velocity calculation cache: {player_id: deque([(frame_idx, x, y), ...])}
         # Stores the last 5 frames of positions for smooth velocity calculation
-        self.position_history = {} 
+        self.position_history = {}
+
+    def set_fps(self, fps: float) -> None:
+        """Update the FPS used for velocity calculation. Call before processing starts."""
+        self._fps = fps
+        self._dt = 1.0 / fps
 
     def update(self, detections: sv.Detections, frame_data: FrameData):
         """
@@ -88,7 +95,7 @@ class Tracker:
         Call this method after Transformer calculates pitch_position to compute velocity.
         """
         current_frame = frame_data.frame_index
-        dt = 1.0 / 30.0 # Assume 30fps, 0.033s per frame
+        dt = self._dt
         
         for p in frame_data.players:
             if p.id == -1 or p.pitch_position is None:

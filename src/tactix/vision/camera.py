@@ -10,7 +10,7 @@ Description:
     Includes a smoothing mechanism (Moving Average) for robust coordinate output.
 """
 
-from typing import Optional, List
+from typing import Optional, List, Tuple, Union
 import cv2
 import numpy as np
 from collections import deque
@@ -40,31 +40,39 @@ class CameraSmoother:
 
 
 class CameraTracker:
-    def __init__(self, initial_keypoints: np.ndarray = None, smoothing_window=5):
+    def __init__(self, initial_keypoints: np.ndarray = None, smoothing_window: int = 5,
+                 max_drift_frames: int = 20, blend_alpha: float = 0.7):
         """
         Initializes the camera tracker.
         :param initial_keypoints: Initial keypoint coordinates (N, 2), if None, waits for first update to initialize
         :param smoothing_window: Size of the smoothing window
+        :param max_drift_frames: Max consecutive optical flow frames before forced recalibration
+        :param blend_alpha: Weight for new YOLO detection in soft_reset blend (0-1)
         """
         self.current_keypoints: Optional[np.ndarray] = None
         self._num_points: int = 0
+        # Maps each tracked point to its original YOLO keypoint index (0–25)
+        self._kpt_indices: Optional[np.ndarray] = None
         if initial_keypoints is not None:
             self.current_keypoints = initial_keypoints.astype(np.float32).reshape(-1, 1, 2)
             self._num_points = len(initial_keypoints)
-            
+
         self.prev_gray: Optional[np.ndarray] = None
-        
+
         # Optical Flow parameters (LK Optical Flow)
         self.lk_params = dict(
             winSize=(20, 20),
             maxLevel=2,
             criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03)
         )
-        
+
         # Initialize smoother
         self.smoother = CameraSmoother(window_size=smoothing_window)
-        # Track which original indices are still alive
-        self._alive_mask: Optional[np.ndarray] = None
+
+        # Drift detection: count consecutive frames running on optical flow only
+        self._consecutive_flow_frames: int = 0
+        self._max_drift_frames: int = max_drift_frames
+        self._blend_alpha: float = blend_alpha
 
     def reset(self, keypoints: np.ndarray, frame: np.ndarray):
         """
@@ -73,36 +81,67 @@ class CameraTracker:
         self.current_keypoints = keypoints.astype(np.float32).reshape(-1, 1, 2)
         self._num_points = len(keypoints)
         self.prev_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        self._alive_mask = np.ones(self._num_points, dtype=bool)
+        self._kpt_indices = np.arange(self._num_points)
+        self._consecutive_flow_frames = 0
         # Reset smoother history to avoid old datasets dragging down new position accuracy
         self.smoother = CameraSmoother(window_size=self.smoother.window_size)
         self.smoother.update(keypoints) # Immediately push current value
 
-    def soft_reset(self, keypoints: np.ndarray, frame: np.ndarray):
+    def soft_reset(self, keypoints: np.ndarray, frame: np.ndarray,
+                   confs: Optional[np.ndarray] = None, conf_threshold: float = 0.3):
         """
         Gently updates tracking points from YOLO without destroying smoother history.
-        Replaces tracked positions with new YOLO detections while preserving the
-        smoothing window — avoids the "jump" that a hard reset causes.
-        """
-        new_pts = keypoints.astype(np.float32).reshape(-1, 1, 2)
-        if self.current_keypoints is not None and len(new_pts) == len(self.current_keypoints):
-            # Same shape — blend in-place, keep smoother
-            self.current_keypoints = new_pts
-        else:
-            # Shape changed — must hard reset
-            self.current_keypoints = new_pts
-            self._num_points = len(keypoints)
-            self.smoother = CameraSmoother(window_size=self.smoother.window_size)
-            self.smoother.update(keypoints)
-        self.prev_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        self._alive_mask = np.ones(len(new_pts), dtype=bool)
 
-    def update(self, frame: np.ndarray) -> Optional[np.ndarray]:
+        Accepts the full (26, 2) keypoint array from YOLO. Only tracks points that
+        have valid coordinates (non-zero) and confidence above threshold. Maintains
+        _kpt_indices so downstream code can reconstruct the 26-point indexed array.
         """
-        Takes the current frame, calculates new positions using Optical Flow, and returns smoothed results.
-        Returns None if not initialized.
+        # Determine which keypoints are valid for tracking
+        if confs is not None:
+            valid = confs >= conf_threshold
+        else:
+            # Fallback: treat non-zero coordinates as valid
+            valid = ~((keypoints[:, 0] == 0) & (keypoints[:, 1] == 0))
+        valid_indices = np.where(valid)[0]
+
+        if len(valid_indices) < 4:
+            # Too few valid points — skip soft_reset entirely
+            return
+
+        valid_pts = keypoints[valid_indices].astype(np.float32).reshape(-1, 1, 2)
+
+        # Weighted blend if index set matches the currently tracked set
+        if (self.current_keypoints is not None
+                and self._kpt_indices is not None
+                and np.array_equal(valid_indices, self._kpt_indices)):
+            self.current_keypoints = (
+                self._blend_alpha * valid_pts + (1.0 - self._blend_alpha) * self.current_keypoints
+            )
+        else:
+            # Index set changed — hard reset tracking state
+            self.current_keypoints = valid_pts
+            self._num_points = len(valid_indices)
+            self.smoother = CameraSmoother(window_size=self.smoother.window_size)
+            self.smoother.update(keypoints[valid_indices])
+
+        self._kpt_indices = valid_indices
+        self.prev_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        self._consecutive_flow_frames = 0
+
+    def update(self, frame: np.ndarray) -> Optional[Tuple[np.ndarray, np.ndarray]]:
         """
-        if self.current_keypoints is None:
+        Takes the current frame, calculates new positions using Optical Flow.
+        Returns (smoothed_points, kpt_indices) or None if tracking fails.
+        kpt_indices maps each returned point to its original YOLO keypoint index.
+        """
+        if self.current_keypoints is None or self._kpt_indices is None:
+            return None
+
+        # Drift guard: if optical flow has been running too long without YOLO reset,
+        # accumulated error is too high — force recalibration
+        self._consecutive_flow_frames += 1
+        if self._consecutive_flow_frames > self._max_drift_frames:
+            print(f"⚠️ Optical flow drift limit reached ({self._max_drift_frames} frames), requesting recalibration")
             return None
 
         frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -110,9 +149,8 @@ class CameraTracker:
         # If running update for the first time and no prev_gray (but points given in init)
         if self.prev_gray is None:
             self.prev_gray = frame_gray
-            # Directly return initial values (processed by smoother)
             raw_points = self.current_keypoints.reshape(-1, 2)
-            return self.smoother.update(raw_points)
+            return self.smoother.update(raw_points), self._kpt_indices.copy()
 
         # === Core: Optical Flow Tracking ===
         new_points, status, error = cv2.calcOpticalFlowPyrLK(
@@ -125,10 +163,11 @@ class CameraTracker:
             n_alive = int(np.sum(alive))
 
             if n_alive >= 4:
-                # Keep only the surviving points
+                # Keep only the surviving points and their index mapping
                 if not np.all(alive):
                     new_points = new_points[alive]
                     self.current_keypoints = new_points
+                    self._kpt_indices = self._kpt_indices[alive]
                     # Rebuild smoother since point count changed
                     self.smoother = CameraSmoother(window_size=self.smoother.window_size)
                 else:
@@ -137,7 +176,7 @@ class CameraTracker:
                 raw_points = self.current_keypoints.reshape(-1, 2)
                 smoothed_points = self.smoother.update(raw_points)
                 self.prev_gray = frame_gray
-                return smoothed_points
+                return smoothed_points, self._kpt_indices.copy()
 
         # Fewer than 4 points survived — request recalibration
         print("⚠️ Camera Tracker lost too many keypoints!")

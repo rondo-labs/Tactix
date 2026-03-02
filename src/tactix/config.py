@@ -9,14 +9,7 @@ Description: Central configuration file for paths, colors, and parameters.
 
 from dataclasses import dataclass, field
 from typing import List, Tuple
-from enum import Enum
 import supervision as sv
-
-class CalibrationMode(Enum):
-    AI_ONLY = "ai"             # Pure AI (YOLO)
-    MANUAL_FIXED = "manual"    # Pure Manual (Fixed points tracking)
-    PANORAMA = "panorama"      # Panorama (Manual Init + Global Motion)
-    HYBRID = "hybrid"          # AI + ORB motion tracking fusion
 
 @dataclass
 class Colors:
@@ -54,11 +47,11 @@ class Colors:
 @dataclass
 class Config:
     # === Path Settings ===
-    PITCH_MODEL_PATH: str = "assets/weights/football_pitch.pt"
+    PITCH_MODEL_PATH: str = "assets/weights/pitch_keypoints_yolo26m_pose.pt"
     PLAYER_MODEL_PATH: str = "assets/weights/ball_player_yolo26x.pt"
     
-    INPUT_VIDEO: str = "assets/samples/Arsenal 2-3 Manchester United – Tactical Cam Highlights Premier League 25012026_1080p.mp4"
-    OUTPUT_VIDEO: str = "assets/output/Arsenal 2-3 Manchester United – Tactical Cam Highlights Premier League 25012026_1080p_Result.mp4"
+    INPUT_VIDEO: str = "assets/samples/test1.mp4"
+    OUTPUT_VIDEO: str = "assets/output/test1_Result.mp4"
     PITCH_TEMPLATE: str = "assets/pitch_bg.png"
     
     # FIFA EPTS Standard Transfer Format Export
@@ -80,7 +73,7 @@ class Config:
     SAM3_MODEL_PATH: str = "assets/weights/sam3.pt"
     SAM3_CONF: float = 0.25
     SAM3_HALF: bool = True
-    SAM3_TEXT_PROMPTS: list = ["football player", "goalkeeper", "referee", "football"]
+    SAM3_TEXT_PROMPTS: list = field(default_factory=lambda: ["football player", "goalkeeper", "referee", "football"])
     SAM3_REFINE_MODE: str = "bbox"  # "bbox" or "concept"
     
     # Jersey Number Detection (OCR-based player identification)
@@ -96,19 +89,10 @@ class Config:
     SHADOW_LENGTH: float = 20.0 # Meters
     SHADOW_ANGLE: float = 20.0 # Degrees
 
-    # === Calibration Settings ===
-    INTERACTIVE_MODE: bool = True
-    
-    # Current Calibration Mode
-    CALIBRATION_MODE: CalibrationMode = CalibrationMode.HYBRID
-    
-    # Legacy flag (kept for compatibility, but logic moved to CALIBRATION_MODE)
-    USE_MOCK_PITCH: bool = True 
-
-# === Visualization Settings (Default State) ===
+    # === Visualization Settings (Default State) ===
     GEOMETRY_ENABLED: bool = True # Master switch for pitch calibration/minimap
     
-    SHOW_MINIMAP: bool = False
+    SHOW_MINIMAP: bool = True
     SHOW_VORONOI: bool = False
     SHOW_HEATMAP: bool = False
     SHOW_COMPACTNESS: bool = False
@@ -118,7 +102,7 @@ class Config:
     SHOW_COVER_SHADOW: bool = False
     SHOW_TEAM_CENTROID: bool = False
     SHOW_TEAM_WIDTH_LENGTH: bool = False
-    SHOW_DEBUG_KEYPOINTS: bool = False
+    SHOW_DEBUG_KEYPOINTS: bool = True
 
     # === Color Pre-Scan Settings ===
     # Pre-scan the video to collect jersey colors before the main pipeline.
@@ -135,15 +119,25 @@ class Config:
     ENABLE_CACHE: bool = False
     CACHE_DIR: str = "assets/cache"
 
-    # === Hybrid Estimator Settings ===
-    HYBRID_ORB_FEATURES: int = 1000       # ORB features for motion tracking (more = better for fast pan)
-    HYBRID_MAX_DRIFT_FRAMES: int = 30     # Max frames of pure-ORB before confidence drops to 0
-    HYBRID_YOLO_ANCHOR_THRESHOLD: int = 4 # Min YOLO points to trigger ORB tracker reset
-
     # === Homography Smoothing (OneEuroFilter) ===
     HOMOGRAPHY_SMOOTH_ENABLED: bool = True
     HOMOGRAPHY_MIN_CUTOFF: float = 1.0    # Lower = smoother when camera is still
     HOMOGRAPHY_BETA: float = 0.007        # Higher = less lag during fast pans
+
+    # === Calibration Robustness ===
+    HOMOGRAPHY_MAX_JUMP: float = 0.4            # Max allowed relative change between frames
+    RANSAC_REPROJ_THRESHOLD: float = 3.0        # RANSAC reprojection threshold (pixels)
+    OPTICAL_FLOW_CONFIDENCE: float = 0.65       # Confidence assigned to optically-tracked points
+    OPTICAL_FLOW_MAX_DRIFT_FRAMES: int = 20     # Max consecutive optical flow frames before forced recalibration
+    OPTICAL_FLOW_BLEND_ALPHA: float = 0.7       # soft_reset blend: weight for new YOLO detection
+
+    # === Ball Detection (InferenceSlicer) ===
+    ENABLE_BALL_SLICER: bool = True
+    BALL_SLICER_WH: tuple = (640, 640)
+    BALL_SLICER_OVERLAP: float = 0.2
+
+    # === Embedding Team Classifier ===
+    USE_EMBEDDING_CLASSIFIER: bool = True
 
     # === Zone Definitions (meters) ===
     # Zone 14: area directly in front of the penalty box

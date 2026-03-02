@@ -5,7 +5,7 @@ Author: Xingnan Zhu
 File Name: ai_estimator.py
 Description:
     Implements the pitch keypoint estimation using a YOLO-Pose model.
-    It detects 27 standard keypoints on the football pitch to establish
+    It detects 26 standard keypoints on the football pitch to establish
     the correspondence between the video frame and the 2D tactical board.
 """
 
@@ -22,29 +22,37 @@ class AIPitchEstimator(BasePitchEstimator):
 
     def predict(self, frame: np.ndarray) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
         """
-        Returns: (keypoints_xy, confidences)
-        xy shape: (27, 2)
-        conf shape: (27, )
-        """
-        # Run inference (verbose=False suppresses logs)
-        results = self.model(frame, device=self.device, verbose=False)[0]
-        
-        if results.keypoints is not None and len(results.keypoints.data) > 0:
-            # Logic: Find the box with the largest area or highest confidence
-            # Here we simply take the one with the highest box confidence
-            best_idx = 0
-            if results.boxes is not None:
-                # Find index of max confidence
-                best_idx = results.boxes.conf.argmax().item()
+        Multi-box keypoint fusion: for each keypoint index, takes the
+        highest-confidence prediction across all detected boxes.
 
-            # datasets shape: (1, 27, 3) -> [x, y, conf]
-            kpts = results.keypoints.data[0].cpu().numpy()
-            xy = kpts[:, :2]
-            conf = kpts[:, 2]
-            return xy, conf
-        
-        # If nothing detected, return None
-        return None, None
+        Returns: (keypoints_xy, confidences)
+        xy shape: (26, 2)
+        conf shape: (26,)
+        """
+        results = self.model(frame, device=self.device, verbose=False)[0]
+
+        if results.keypoints is None or len(results.keypoints.data) == 0:
+            return None, None
+
+        all_kpts = results.keypoints.data.cpu().numpy()  # (N_boxes, 26, 3)
+        n_kpts = all_kpts.shape[1]
+
+        # Per-index fusion: pick the box with the highest confidence for each keypoint
+        best_box_per_kpt = all_kpts[:, :, 2].argmax(axis=0)  # (26,)
+        best_xy = np.zeros((n_kpts, 2), dtype=np.float32)
+        best_conf = np.zeros(n_kpts, dtype=np.float32)
+        for i in range(n_kpts):
+            b = best_box_per_kpt[i]
+            best_xy[i] = all_kpts[b, i, :2]
+            best_conf[i] = all_kpts[b, i, 2]
+
+        # Zero-coordinate cleanup: (0,0) is a placeholder for undetected keypoints,
+        # but it coincides with TL_CORNER (index 0). Suppress non-TL_CORNER zeros.
+        for i in range(1, n_kpts):
+            if best_xy[i, 0] == 0 and best_xy[i, 1] == 0:
+                best_conf[i] = 0.0
+
+        return best_xy, best_conf
     
 class MockPitchEstimator(BasePitchEstimator):
     """
@@ -54,14 +62,11 @@ class MockPitchEstimator(BasePitchEstimator):
         print(f"⚠️ Warning: Using Mock Pitch Estimator (Fixed Coordinates)")
         self.mock_points = mock_points
         
-        # Construct a dummy output array (27 points, all 0)
-        # 27 because our V4 standard defines 27 points
-        self.dummy_xy = np.zeros((27, 2), dtype=float)
-        self.dummy_conf = np.zeros(27, dtype=float)
-        
-        # Fill in the 4 fixed points
+        self.dummy_xy = np.zeros((26, 2), dtype=float)
+        self.dummy_conf = np.zeros(26, dtype=float)
+
         for x, y, idx in mock_points:
-            if idx < 27:
+            if idx < 26:
                 self.dummy_xy[idx] = [x, y]
                 self.dummy_conf[idx] = 1.0 # Full confidence
 

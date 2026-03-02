@@ -94,6 +94,29 @@ class TeamClassifier:
         print(f"   B = {self.team_colors[TeamID.B].astype(int)}")
         return True
 
+    def fit_with_centers(self, colors: List[np.ndarray], center_a: np.ndarray, center_b: np.ndarray) -> bool:
+        """
+        Train K-Means with SigLIP-derived cluster centers as initialization.
+        This seeds the optimizer with correct team assignments from the embedding space,
+        avoiding the random-init ambiguity of standard K-Means.
+        Returns True if training succeeded.
+        """
+        if len(colors) < 2:
+            return False
+
+        data = np.array(colors)
+        init = np.array([center_a, center_b])
+        self.kmeans = KMeans(n_clusters=2, init=init, n_init=1, random_state=0)
+        self.kmeans.fit(data)
+
+        self.team_colors[TeamID.A] = self.kmeans.cluster_centers_[0]
+        self.team_colors[TeamID.B] = self.kmeans.cluster_centers_[1]
+
+        print(f"✅ Team Colors Learned (SigLIP-guided, {len(colors)} samples):")
+        print(f"   A = {self.team_colors[TeamID.A].astype(int)}")
+        print(f"   B = {self.team_colors[TeamID.B].astype(int)}")
+        return True
+
     def predict_one(self, color: np.ndarray) -> TeamID:
         """
         Predict the team for a single pre-extracted color vector.
