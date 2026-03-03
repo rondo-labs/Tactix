@@ -47,7 +47,7 @@ class Colors:
 @dataclass
 class Config:
     # === Path Settings ===
-    PITCH_MODEL_PATH: str = "assets/weights/pitch_keypoints_yolo26m_pose.pt"
+    PITCH_MODEL_PATH: str = "assets/weights/pitch_keypoints_yolo26x_pose.pt"
     PLAYER_MODEL_PATH: str = "assets/weights/ball_player_yolo26x.pt"
     
     INPUT_VIDEO: str = "assets/samples/test1.mp4"

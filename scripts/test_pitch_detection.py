@@ -18,8 +18,8 @@ from tactix.core.keypoints import YOLO_INDEX_MAP
 
 # ── Config ────────────────────────────────────────────────────────────────────
 cfg = Config()
-INPUT_VIDEO  = "assets/samples/Arsenal 2-3 Manchester United – Tactical Cam Highlights Premier League 25012026_1080p.mp4"
-OUTPUT_VIDEO = "assets/output/Arsenal 2-3 Manchester United – Tactical Cam Highlights Premier League 25012026_1080p_test_pitch_detection.mp4"
+INPUT_VIDEO  = "assets/samples/test1.mp4"
+OUTPUT_VIDEO = "assets/output/test1_pitch_detection.mp4"
 CONF_THRESH  = cfg.CONF_PITCH   # 0.3 — same threshold the engine uses
 FRAME_SKIP   = 1                # process every frame (set >1 to go faster)
 
@@ -80,21 +80,18 @@ for frame_idx in tqdm(range(total_frames), desc="Processing"):
         n_above = 0
 
         for i, ((x, y), c) in enumerate(zip(xy, conf)):
-            # Always draw every predicted point (colour shows confidence tier)
             colour = conf_colour(c)
             ix, iy = int(x), int(y)
 
-            # Skip (0, 0) placeholder predictions
+            # Skip (0, 0) placeholder predictions and below-threshold points
             if ix == 0 and iy == 0:
                 continue
+            if c < CONF_THRESH:
+                continue
 
-            # Circle: filled if above threshold, outline if below
-            if c >= CONF_THRESH:
-                cv2.circle(canvas, (ix, iy), 5, colour, -1)
-                n_above += 1
-                kpt_detect_count[i] += 1
-            else:
-                cv2.circle(canvas, (ix, iy), 4, colour, 1)
+            cv2.circle(canvas, (ix, iy), 5, colour, -1)
+            n_above += 1
+            kpt_detect_count[i] += 1
 
             # Label: name + conf
             name  = YOLO_INDEX_MAP.get(i, f"kpt{i}")
