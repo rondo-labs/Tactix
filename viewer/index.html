@@ -1,0 +1,962 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tactix Viewer</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:          #0d1117;
+    --surface:     #161b22;
+    --border:      #30363d;
+    --text:        #e6edf3;
+    --text-muted:  #8b949e;
+    --accent:      #58a6ff;
+    --team-a:      #e63946;
+    --team-b:      #457b9d;
+    --referee:     #ffd60a;
+    --goalkeeper:  #a8dadc;
+    --ball:        #ffa500;
+    --pitch-bg:    #0e1a12;
+    --pitch-line:  rgba(255,255,255,0.22);
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", monospace;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    user-select: none;
+  }
+
+  /* ── Top bar ── */
+  #topbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  #topbar h1 {
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    color: var(--accent);
+    text-transform: uppercase;
+  }
+  #topbar .sep { flex: 1; }
+  #topbar .meta-tag {
+    font-size: 11px;
+    color: var(--text-muted);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 8px;
+  }
+  #file-btn {
+    background: var(--accent);
+    color: #000;
+    border: none;
+    border-radius: 6px;
+    padding: 5px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity .15s;
+  }
+  #file-btn:hover { opacity: .85; }
+  #file-input { display: none; }
+
+  /* ── Canvas area ── */
+  #canvas-wrap {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    padding: 12px;
+  }
+  #pitch { border-radius: 6px; display: block; }
+
+  /* ── Controls bar ── */
+  #controls {
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    padding: 10px 16px 12px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  /* Timeline */
+  #timeline-wrap { display: flex; align-items: center; gap: 10px; }
+  #time-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+    min-width: 120px;
+  }
+  #timeline {
+    flex: 1;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--border);
+    outline: none;
+    cursor: pointer;
+  }
+  #timeline::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    border: 2px solid var(--bg);
+  }
+
+  /* Playback row */
+  #playback-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .ctrl-btn {
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    width: 32px; height: 32px;
+    font-size: 14px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: border-color .15s, color .15s;
+  }
+  .ctrl-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .ctrl-btn.active { border-color: var(--accent); color: var(--accent); background: #1c2a3a; }
+
+  #speed-select {
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 12px;
+    cursor: pointer;
+    outline: none;
+  }
+
+  /* Legend */
+  .legend { display: flex; align-items: center; gap: 14px; margin-left: auto; }
+  .legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-muted); }
+  .legend-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    box-shadow: 0 0 5px currentColor;
+  }
+
+  /* Overlay toggles */
+  .toggle-row { display: flex; align-items: center; gap: 8px; }
+  .toggle-btn {
+    background: var(--bg);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 3px 10px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .toggle-btn.on {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: #1c2a3a;
+  }
+
+  /* Drop hint */
+  #drop-hint {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    color: var(--text-muted);
+    pointer-events: none;
+  }
+  #drop-hint .icon { font-size: 48px; opacity: .3; }
+  #drop-hint p { font-size: 14px; opacity: .5; }
+  #canvas-wrap { position: relative; }
+</style>
+</head>
+<body>
+
+<!-- Top bar -->
+<div id="topbar">
+  <h1>⚽ Tactix Viewer</h1>
+  <span class="sep"></span>
+  <span class="meta-tag" id="meta-fps">–</span>
+  <span class="meta-tag" id="meta-frames">–</span>
+  <button id="demo-btn" style="background:var(--surface);color:var(--text-muted);border:1px solid var(--border);border-radius:6px;padding:5px 14px;font-size:12px;cursor:pointer;">Demo</button>
+  <button id="file-btn">Load JSON</button>
+  <input type="file" id="file-input" accept=".json">
+</div>
+
+<!-- Canvas -->
+<div id="canvas-wrap">
+  <div id="drop-hint">
+    <div class="icon">📂</div>
+    <p>Click "Load JSON" or drop a viewer_data.json file here</p>
+  </div>
+  <canvas id="pitch"></canvas>
+</div>
+
+<!-- Controls -->
+<div id="controls">
+  <div id="timeline-wrap">
+    <span id="time-label">0:00.0 / 0:00.0 · frame 0</span>
+    <input type="range" id="timeline" min="0" max="1000" value="0" step="1">
+  </div>
+  <div id="playback-row">
+    <button class="ctrl-btn" id="btn-prev" title="Previous frame">‹</button>
+    <button class="ctrl-btn active" id="btn-play" title="Play / Pause">▶</button>
+    <button class="ctrl-btn" id="btn-next" title="Next frame">›</button>
+    <select id="speed-select">
+      <option value="0.25">0.25×</option>
+      <option value="0.5">0.5×</option>
+      <option value="1" selected>1×</option>
+      <option value="2">2×</option>
+      <option value="4">4×</option>
+    </select>
+
+    <div class="toggle-row" style="margin-left:8px">
+      <span style="font-size:11px;color:var(--text-muted)">Show:</span>
+      <button class="toggle-btn on" id="tog-velocity">Velocity</button>
+      <button class="toggle-btn on" id="tog-trails">Trails</button>
+      <button class="toggle-btn on" id="tog-ids">IDs</button>
+      <button class="toggle-btn on" id="tog-ball">Ball</button>
+    </div>
+
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:var(--team-a);color:var(--team-a)"></div>Team A</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--team-b);color:var(--team-b)"></div>Team B</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--goalkeeper);color:var(--goalkeeper)"></div>GK</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--referee);color:var(--referee)"></div>Ref</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--ball);color:var(--ball)"></div>Ball</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────────
+// State
+// ─────────────────────────────────────────────────
+let data       = null;   // parsed JSON
+let playing    = false;
+let speed      = 1.0;
+let currentTime = 0;     // seconds
+let lastTs     = null;
+let rafId      = null;
+
+// Overlay toggles
+const opts = { velocity: true, trails: true, ids: true, ball: true };
+
+// Per-player trail history  { id -> [{x,y}, ...] }
+const trails = {};
+const TRAIL_LEN = 20;
+
+// ─────────────────────────────────────────────────
+// Canvas setup
+// ─────────────────────────────────────────────────
+const canvas = document.getElementById('pitch');
+const ctx    = canvas.getContext('2d');
+
+// Pitch layout in canvas pixels — recalculated on resize / load
+let P = {};   // { left, top, w, h, sx, sy }  (sx/sy = canvas-px per source-px)
+
+function calcLayout() {
+  const wrap = document.getElementById('canvas-wrap');
+  const maxW = wrap.clientWidth  - 24;
+  const maxH = wrap.clientHeight - 24;
+
+  // Source reference canvas dimensions from JSON (fallback sensible default)
+  const srcW = data ? data.meta.canvas.width  : 1559;
+  const srcH = data ? data.meta.canvas.height : 1010;
+  const aspect = srcW / srcH;
+
+  let cw = maxW, ch = maxW / aspect;
+  if (ch > maxH) { ch = maxH; cw = maxH * aspect; }
+
+  canvas.width  = Math.floor(cw);
+  canvas.height = Math.floor(ch);
+
+  // Pitch drawing area (small inset for outer margin)
+  const margin = Math.round(cw * 0.018);
+  P = {
+    left: margin,
+    top:  margin,
+    w:    cw - margin * 2,
+    h:    ch - margin * 2,
+    sx:   (cw - margin * 2) / srcW,
+    sy:   (ch - margin * 2) / srcH,
+  };
+}
+
+// ─────────────────────────────────────────────────
+// Pitch drawing (programmatic, no image file)
+// ─────────────────────────────────────────────────
+// All dimensions below are in metres; converted via P.w / pitchLength
+const PITCH = { L: 105, W: 68 };  // overridden from JSON meta
+
+function m2px(x_m, y_m) {
+  // Convert metres → canvas pixels
+  return [
+    P.left + (x_m / PITCH.L) * P.w,
+    P.top  + (y_m / PITCH.W) * P.h,
+  ];
+}
+function ms(m) { return (m / PITCH.L) * P.w; }  // metres → horizontal pixels
+function ms_v(m) { return (m / PITCH.W) * P.h; } // metres → vertical pixels
+
+function drawPitch() {
+  const { left, top, w, h } = P;
+
+  // ── Background ──
+  ctx.fillStyle = '#0d1117';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Alternating grass stripes (vertical, 10 stripes)
+  const stripeCount = 10;
+  const stripeW = w / stripeCount;
+  for (let i = 0; i < stripeCount; i++) {
+    ctx.fillStyle = i % 2 === 0 ? '#0e1e14' : '#0a1710';
+    ctx.fillRect(left + i * stripeW, top, stripeW, h);
+  }
+
+  // ── Lines ──
+  ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+  ctx.lineWidth   = Math.max(1, P.w * 0.0013);
+  ctx.lineCap     = 'round';
+
+  // Helper: stroke a rect in metres
+  function mRect(x, y, lw, lh) {
+    const [px, py] = m2px(x, y);
+    ctx.strokeRect(px, py, ms(lw), ms_v(lh));
+  }
+
+  // Outer boundary
+  mRect(0, 0, PITCH.L, PITCH.W);
+
+  // Halfway line
+  const [hlx] = m2px(52.5, 0);
+  ctx.beginPath();
+  ctx.moveTo(hlx, top);
+  ctx.lineTo(hlx, top + h);
+  ctx.stroke();
+
+  // Centre circle (r=9.15m)
+  const [cx, cy] = m2px(52.5, 34);
+  ctx.beginPath();
+  ctx.arc(cx, cy, ms(9.15), 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Centre spot
+  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+  ctx.beginPath();
+  ctx.arc(cx, cy, Math.max(2, ms(0.35)), 0, Math.PI * 2);
+  ctx.fill();
+
+  // Left penalty area  (16.5m deep, 40.32m wide, centred)
+  mRect(0, (PITCH.W - 40.32) / 2, 16.5, 40.32);
+  // Right penalty area
+  mRect(PITCH.L - 16.5, (PITCH.W - 40.32) / 2, 16.5, 40.32);
+
+  // Left goal area  (5.5m deep, 18.32m wide, centred)
+  mRect(0, (PITCH.W - 18.32) / 2, 5.5, 18.32);
+  // Right goal area
+  mRect(PITCH.L - 5.5, (PITCH.W - 18.32) / 2, 5.5, 18.32);
+
+  // Penalty spots
+  function penSpot(x_m) {
+    const [px, py] = m2px(x_m, 34);
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.beginPath();
+    ctx.arc(px, py, Math.max(2, ms(0.35)), 0, Math.PI * 2);
+    ctx.fill();
+  }
+  penSpot(11);
+  penSpot(PITCH.L - 11);
+
+  // Penalty arcs (radius 9.15m, only the part outside the penalty area)
+  // cos(halfAngle) = (penEdge - spotX) / r = 5.5 / 9.15
+  const penHalf = Math.acos(5.5 / 9.15); // ≈ 0.929 rad ≈ 53°
+  function penArc(centreX) {
+    const [px, py] = m2px(centreX, 34);
+    ctx.beginPath();
+    if (centreX < 52.5) {
+      // Left spot: visible arc faces right (toward centre)
+      ctx.arc(px, py, ms(9.15), -penHalf, penHalf, false);
+    } else {
+      // Right spot: visible arc faces left (toward centre)
+      ctx.arc(px, py, ms(9.15), Math.PI - penHalf, Math.PI + penHalf, false);
+    }
+    ctx.stroke();
+  }
+  penArc(11);
+  penArc(PITCH.L - 11);
+
+  // Corner arcs (r=1m)
+  // Each arc is centred on a corner and sweeps inward onto the pitch
+  const corners = [[0,0],[PITCH.L,0],[0,PITCH.W],[PITCH.L,PITCH.W]];
+  const cAngles  = [
+    [0,            Math.PI / 2],   // top-left  → sweep 0°→90°
+    [Math.PI / 2,  Math.PI],       // top-right → sweep 90°→180°
+    [-Math.PI / 2, 0],             // bot-left  → sweep -90°→0°
+    [Math.PI,      Math.PI * 1.5], // bot-right → sweep 180°→270°
+  ];
+  corners.forEach(([mx, my], i) => {
+    const [px, py] = m2px(mx, my);
+    ctx.beginPath();
+    ctx.arc(px, py, ms(1), cAngles[i][0], cAngles[i][1]);
+    ctx.stroke();
+  });
+
+  // Goals (7.32m wide, ~2.44m deep – just drawn as thin inset rects)
+  ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+  ctx.lineWidth   = Math.max(1.5, P.w * 0.002);
+  mRect(-2.44, (PITCH.W - 7.32) / 2, 2.44, 7.32);
+  mRect(PITCH.L, (PITCH.W - 7.32) / 2, 2.44, 7.32);
+}
+
+// ─────────────────────────────────────────────────
+// Player / Ball colours
+// ─────────────────────────────────────────────────
+const TEAM_COLOR = {
+  A:   '#e63946',
+  B:   '#457b9d',
+  GK:  '#a8dadc',
+  REF: '#ffd60a',
+  '?': '#6e7681',
+};
+
+function teamColor(team) { return TEAM_COLOR[team] || TEAM_COLOR['?']; }
+
+// ─────────────────────────────────────────────────
+// Glow helper — radial gradient "halo"
+// ─────────────────────────────────────────────────
+function drawGlow(x, y, r, color, alpha) {
+  const g = ctx.createRadialGradient(x, y, r * 0.3, x, y, r * 2.8);
+  g.addColorStop(0, color.replace(')', `,${alpha})`).replace('rgb', 'rgba'));
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(x, y, r * 2.8, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function hexToRgb(hex) {
+  const r = parseInt(hex.slice(1,3),16);
+  const g = parseInt(hex.slice(3,5),16);
+  const b = parseInt(hex.slice(5,7),16);
+  return `rgb(${r},${g},${b})`;
+}
+
+// ─────────────────────────────────────────────────
+// Draw a player dot
+// ─────────────────────────────────────────────────
+function drawPlayer(p, alpha) {
+  const [x, y] = srcToCvs(p.x, p.y);
+  const dotR   = Math.max(4, P.w * 0.007);
+  const color  = teamColor(p.team);
+  const rgb    = hexToRgb(color);
+
+  // Glow
+  drawGlow(x, y, dotR, rgb, 0.35);
+
+  // White outer ring
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  ctx.beginPath();
+  ctx.arc(x, y, dotR + 1.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Coloured inner disc (with pressure darkening)
+  let fillColor = color;
+  if (p.pressure > 0.65) {
+    fillColor = '#e63946';
+  } else if (p.pressure > 0.35) {
+    fillColor = '#ffd60a';
+  }
+  ctx.fillStyle = fillColor;
+  ctx.beginPath();
+  ctx.arc(x, y, dotR, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Velocity arrow
+  if (opts.velocity && (p.vx !== undefined || p.vy !== undefined)) {
+    const vx = p.vx || 0, vy = p.vy || 0;
+    const spd = Math.sqrt(vx*vx + vy*vy);
+    if (spd > 0.3) {
+      const scale = P.w * 0.028 / (PITCH.L * 0.01);  // 1 m/s ≈ ~some pixels
+      const ex = x + vx * scale;
+      const ey = y + vy * scale;
+      ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+      ctx.lineWidth   = Math.max(1, dotR * 0.35);
+      ctx.lineCap     = 'round';
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(ex, ey);
+      ctx.stroke();
+      // Arrow head
+      const angle = Math.atan2(ey - y, ex - x);
+      const hl = dotR * 0.7;
+      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      ctx.beginPath();
+      ctx.moveTo(ex, ey);
+      ctx.lineTo(ex - hl * Math.cos(angle - 0.45), ey - hl * Math.sin(angle - 0.45));
+      ctx.lineTo(ex - hl * Math.cos(angle + 0.45), ey - hl * Math.sin(angle + 0.45));
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  // Jersey label / ID
+  if (opts.ids) {
+    const label = p.jersey || String(p.id);
+    const fontSize = Math.max(7, dotR * 0.9);
+    ctx.font = `bold ${fontSize}px -apple-system, monospace`;
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = p.team === 'REF' ? '#000' : '#fff';
+    ctx.fillText(label.slice(0, 3), x, y + 0.5);
+  }
+}
+
+// ─────────────────────────────────────────────────
+// Draw ball
+// ─────────────────────────────────────────────────
+function drawBall(ball) {
+  if (!opts.ball || !ball) return;
+  const [x, y] = srcToCvs(ball.x, ball.y);
+  const r = Math.max(4, P.w * 0.005);
+
+  // Glow (orange/yellow)
+  const g = ctx.createRadialGradient(x, y, r*0.2, x, y, r*3.5);
+  g.addColorStop(0, 'rgba(255,200,50,0.45)');
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(x, y, r * 3.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Drop shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+  ctx.beginPath();
+  ctx.arc(x + r*0.4, y + r*0.4, r, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Ball body
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+  ctx.lineWidth = Math.max(0.5, r * 0.15);
+  ctx.stroke();
+}
+
+// ─────────────────────────────────────────────────
+// Draw player trails
+// ─────────────────────────────────────────────────
+function drawTrails() {
+  if (!opts.trails) return;
+  for (const [id, pts] of Object.entries(trails)) {
+    if (pts.length < 2) continue;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for (let i = 1; i < pts.length; i++) {
+      const t = i / pts.length;
+      ctx.strokeStyle = `rgba(255,255,255,${t * 0.18})`;
+      ctx.lineWidth   = Math.max(1, P.w * 0.002 * t);
+      ctx.beginPath();
+      ctx.moveTo(...srcToCvs(pts[i-1].x, pts[i-1].y));
+      ctx.lineTo(...srcToCvs(pts[i].x,   pts[i].y));
+      ctx.stroke();
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────
+// Source → canvas coordinate mapping
+// ─────────────────────────────────────────────────
+function srcToCvs(x, y) {
+  return [P.left + x * P.sx, P.top + y * P.sy];
+}
+
+// ─────────────────────────────────────────────────
+// Linear interpolation between two frames
+// ─────────────────────────────────────────────────
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+function interpolateFrame(fi, alpha) {
+  // fi: integer frame index, alpha: 0..1 blend to fi+1
+  const f0 = data.frames[fi];
+  const f1 = data.frames[Math.min(fi + 1, data.frames.length - 1)];
+  if (!f0) return null;
+
+  // Build a map of players in f1 for fast lookup
+  const map1 = {};
+  for (const p of (f1.players || [])) map1[p.id] = p;
+
+  const players = (f0.players || []).map(p0 => {
+    const p1 = map1[p0.id];
+    if (!p1 || alpha === 0) return { ...p0 };
+    return {
+      ...p0,
+      x: lerp(p0.x, p1.x, alpha),
+      y: lerp(p0.y, p1.y, alpha),
+      vx: p1.vx !== undefined ? lerp(p0.vx||0, p1.vx, alpha) : p0.vx,
+      vy: p1.vy !== undefined ? lerp(p0.vy||0, p1.vy, alpha) : p0.vy,
+    };
+  });
+
+  let ball = f0.ball;
+  if (ball && f1.ball && alpha > 0) {
+    ball = { x: lerp(ball.x, f1.ball.x, alpha), y: lerp(ball.y, f1.ball.y, alpha) };
+  }
+
+  return { players, ball };
+}
+
+// ─────────────────────────────────────────────────
+// Update trail history for current frame
+// ─────────────────────────────────────────────────
+function updateTrails(players) {
+  for (const p of players) {
+    if (!trails[p.id]) trails[p.id] = [];
+    const t = trails[p.id];
+    const last = t[t.length - 1];
+    // Only push if moved significantly (avoid duplicate entries)
+    if (!last || Math.abs(last.x - p.x) + Math.abs(last.y - p.y) > 1) {
+      t.push({ x: p.x, y: p.y });
+      if (t.length > TRAIL_LEN) t.shift();
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────
+// Render one animation frame
+// ─────────────────────────────────────────────────
+function render() {
+  if (!data) return;
+  const fps   = data.meta.fps;
+  const total = data.frames.length;
+
+  const rawIdx  = currentTime * fps;
+  const fi      = Math.min(Math.floor(rawIdx), total - 1);
+  const alpha   = rawIdx - fi;
+
+  const frame = interpolateFrame(fi, alpha);
+  if (!frame) return;
+
+  calcLayout();
+  drawPitch();
+  drawTrails();
+  frame.players.forEach(p => drawPlayer(p, alpha));
+  drawBall(frame.ball);
+  updateTrails(frame.players);
+
+  // Update UI
+  updateUI(fi, alpha);
+}
+
+// ─────────────────────────────────────────────────
+// Animation loop
+// ─────────────────────────────────────────────────
+function tick(ts) {
+  if (!playing) { lastTs = null; return; }
+  if (lastTs !== null) {
+    const dt = (ts - lastTs) / 1000;
+    currentTime += dt * speed;
+    const duration = data.frames.length / data.meta.fps;
+    if (currentTime >= duration) {
+      currentTime = duration - 0.001;
+      setPlaying(false);
+    }
+  }
+  lastTs = ts;
+  render();
+  rafId = requestAnimationFrame(tick);
+}
+
+function setPlaying(val) {
+  playing = val;
+  const btn = document.getElementById('btn-play');
+  btn.textContent = playing ? '⏸' : '▶';
+  btn.classList.toggle('active', playing);
+  if (playing) {
+    lastTs = null;
+    rafId  = requestAnimationFrame(tick);
+  }
+}
+
+// ─────────────────────────────────────────────────
+// UI helpers
+// ─────────────────────────────────────────────────
+function fmtTime(sec) {
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  const d = Math.floor((sec % 1) * 10);
+  return `${m}:${String(s).padStart(2,'0')}.${d}`;
+}
+
+function updateUI(fi, alpha) {
+  if (!data) return;
+  const fps  = data.meta.fps;
+  const dur  = data.frames.length / fps;
+  const tl   = document.getElementById('timeline');
+
+  tl.value = Math.round((currentTime / dur) * 1000);
+  document.getElementById('time-label').textContent =
+    `${fmtTime(currentTime)} / ${fmtTime(dur)} · frame ${fi}`;
+}
+
+// ─────────────────────────────────────────────────
+// Load data
+// ─────────────────────────────────────────────────
+function loadData(json) {
+  data = json;
+  // Override pitch dimensions from meta
+  if (json.meta && json.meta.pitch) {
+    PITCH.L = json.meta.pitch.length || 105;
+    PITCH.W = json.meta.pitch.width  || 68;
+  }
+  currentTime = 0;
+  for (const k of Object.keys(trails)) delete trails[k];
+
+  document.getElementById('meta-fps').textContent    = `${json.meta.fps} fps`;
+  document.getElementById('meta-frames').textContent = `${json.meta.total_frames} frames`;
+  document.getElementById('drop-hint').style.display = 'none';
+
+  calcLayout();
+  render();
+}
+
+// ─────────────────────────────────────────────────
+// Event bindings
+// ─────────────────────────────────────────────────
+document.getElementById('file-btn').addEventListener('click', () => {
+  document.getElementById('file-input').click();
+});
+
+document.getElementById('file-input').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try { loadData(JSON.parse(ev.target.result)); }
+    catch(err) { alert('Invalid JSON: ' + err.message); }
+  };
+  reader.readAsText(file);
+});
+
+// Drag & drop
+const wrap = document.getElementById('canvas-wrap');
+wrap.addEventListener('dragover', e => { e.preventDefault(); });
+wrap.addEventListener('drop', e => {
+  e.preventDefault();
+  const file = e.dataTransfer.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try { loadData(JSON.parse(ev.target.result)); }
+    catch(err) { alert('Invalid JSON: ' + err.message); }
+  };
+  reader.readAsText(file);
+});
+
+document.getElementById('btn-play').addEventListener('click', () => {
+  if (!data) return;
+  setPlaying(!playing);
+});
+
+document.getElementById('btn-prev').addEventListener('click', () => {
+  if (!data) return;
+  setPlaying(false);
+  currentTime = Math.max(0, currentTime - 1 / data.meta.fps);
+  render();
+});
+
+document.getElementById('btn-next').addEventListener('click', () => {
+  if (!data) return;
+  setPlaying(false);
+  currentTime = Math.min(
+    (data.frames.length - 1) / data.meta.fps,
+    currentTime + 1 / data.meta.fps
+  );
+  render();
+});
+
+document.getElementById('speed-select').addEventListener('change', e => {
+  speed = parseFloat(e.target.value);
+});
+
+document.getElementById('timeline').addEventListener('input', e => {
+  if (!data) return;
+  setPlaying(false);
+  const dur = data.frames.length / data.meta.fps;
+  currentTime = (e.target.value / 1000) * dur;
+  render();
+});
+
+// Toggle buttons
+['velocity','trails','ids','ball'].forEach(key => {
+  document.getElementById(`tog-${key}`).addEventListener('click', function() {
+    opts[key] = !opts[key];
+    this.classList.toggle('on', opts[key]);
+    render();
+  });
+});
+
+// Keyboard shortcuts
+document.addEventListener('keydown', e => {
+  if (!data) return;
+  if (e.code === 'Space') { e.preventDefault(); setPlaying(!playing); }
+  if (e.code === 'ArrowRight') {
+    setPlaying(false);
+    currentTime = Math.min((data.frames.length - 1) / data.meta.fps, currentTime + 1 / data.meta.fps);
+    render();
+  }
+  if (e.code === 'ArrowLeft') {
+    setPlaying(false);
+    currentTime = Math.max(0, currentTime - 1 / data.meta.fps);
+    render();
+  }
+});
+
+// Resize
+window.addEventListener('resize', () => {
+  if (data) render();
+});
+
+// ─────────────────────────────────────────────────
+// Demo data generator
+// Produces synthetic tracking data so the viewer can
+// be tested without running the full Python pipeline.
+// Coordinates are in minimap pixel space (1559×1010).
+// ─────────────────────────────────────────────────
+function generateDemoData() {
+  const FPS      = 25;
+  const DURATION = 30;     // seconds
+  const TOTAL    = FPS * DURATION;
+  const CW = 1559, CH = 1010;   // reference canvas size
+  // Scale: metres → pixels
+  const sx = CW / 105, sy = CH / 68;
+
+  // Base formation positions in metres
+  // Team A (red): attacking left→right
+  const baseA = [
+    { id:  1, team:'A',  jersey:'1',  x:  4, y:34 },  // GK
+    { id:  2, team:'A',  jersey:'2',  x: 22, y:12 },
+    { id:  3, team:'A',  jersey:'5',  x: 22, y:28 },
+    { id:  4, team:'A',  jersey:'6',  x: 22, y:44 },
+    { id:  5, team:'A',  jersey:'3',  x: 22, y:60 },
+    { id:  6, team:'A',  jersey:'8',  x: 42, y:22 },
+    { id:  7, team:'A',  jersey:'10', x: 42, y:34 },
+    { id:  8, team:'A',  jersey:'4',  x: 42, y:50 },
+    { id:  9, team:'A',  jersey:'11', x: 65, y:16 },
+    { id: 10, team:'A',  jersey:'9',  x: 65, y:34 },
+    { id: 11, team:'A',  jersey:'7',  x: 65, y:56 },
+  ];
+  // Team B (blue): defending right→left
+  const baseB = [
+    { id: 12, team:'B',  jersey:'1',  x:101, y:34 },  // GK
+    { id: 13, team:'B',  jersey:'2',  x: 83, y:12 },
+    { id: 14, team:'B',  jersey:'5',  x: 83, y:28 },
+    { id: 15, team:'B',  jersey:'6',  x: 83, y:44 },
+    { id: 16, team:'B',  jersey:'3',  x: 83, y:60 },
+    { id: 17, team:'B',  jersey:'8',  x: 63, y:16 },
+    { id: 18, team:'B',  jersey:'10', x: 63, y:30 },
+    { id: 19, team:'B',  jersey:'4',  x: 63, y:44 },
+    { id: 20, team:'B',  jersey:'11', x: 63, y:58 },
+    { id: 21, team:'B',  jersey:'9',  x: 78, y:25 },
+    { id: 22, team:'B',  jersey:'7',  x: 78, y:48 },
+  ];
+  const allBase = [...baseA, ...baseB];
+
+  // Each player gets a unique random phase + amplitude for organic movement
+  const phases = allBase.map(() => ({
+    px: Math.random() * Math.PI * 2,
+    py: Math.random() * Math.PI * 2,
+    ax: 2 + Math.random() * 3,   // metres
+    ay: 1 + Math.random() * 2,
+    fx: 0.08 + Math.random() * 0.12,  // Hz
+    fy: 0.06 + Math.random() * 0.10,
+  }));
+
+  const frames = [];
+  for (let f = 0; f < TOTAL; f++) {
+    const t = f / FPS;
+    const players = allBase.map((p, i) => {
+      const ph = phases[i];
+      const dx = Math.sin(2 * Math.PI * ph.fx * t + ph.px) * ph.ax;
+      const dy = Math.sin(2 * Math.PI * ph.fy * t + ph.py) * ph.ay;
+      const nx = Math.max(1, Math.min(104, p.x + dx));
+      const ny = Math.max(1, Math.min(67,  p.y + dy));
+      // velocity in m/s via finite difference scaled to pixels
+      const vx_m = Math.cos(2 * Math.PI * ph.fx * t + ph.px) * ph.ax * 2 * Math.PI * ph.fx;
+      const vy_m = Math.cos(2 * Math.PI * ph.fy * t + ph.py) * ph.ay * 2 * Math.PI * ph.fy;
+      return {
+        id:     p.id,
+        team:   p.team,
+        jersey: p.jersey,
+        x:      Math.round(nx * sx * 10) / 10,
+        y:      Math.round(ny * sy * 10) / 10,
+        vx:     Math.round(vx_m * sx * 100) / 100,
+        vy:     Math.round(vy_m * sy * 100) / 100,
+        speed:  Math.round(Math.sqrt(vx_m*vx_m + vy_m*vy_m) * 10) / 10,
+      };
+    });
+
+    // Ball: simple elliptical path around centre circle
+    const bt  = t * 0.25;  // 1 lap per ~25s
+    const bx  = 52.5 + Math.cos(bt * 2 * Math.PI) * 18;
+    const by  = 34   + Math.sin(bt * 2 * Math.PI) * 10;
+    const ball = {
+      x: Math.round(bx * sx * 10) / 10,
+      y: Math.round(by * sy * 10) / 10,
+    };
+
+    frames.push({ i: f, players, ball });
+  }
+
+  return {
+    meta: {
+      fps: FPS,
+      total_frames: TOTAL,
+      canvas: { width: CW, height: CH },
+      pitch:  { length: 105, width: 68 },
+    },
+    frames,
+  };
+}
+
+document.getElementById('demo-btn').addEventListener('click', () => {
+  loadData(generateDemoData());
+  setPlaying(true);
+});
+
+// Initial draw (empty pitch)
+calcLayout();
+ctx.fillStyle = '#0d1117';
+ctx.fillRect(0, 0, canvas.width, canvas.height);
+</script>
+</body>
+</html>

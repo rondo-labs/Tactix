@@ -119,6 +119,10 @@ class Config:
     ENABLE_CACHE: bool = False
     CACHE_DIR: str = "assets/cache"
 
+    # === Viewer JSON Export ===
+    EXPORT_VIEWER_JSON: bool = True
+    OUTPUT_VIEWER_JSON: str = "assets/output/viewer_data.json"
+
     # === Homography Smoothing (OneEuroFilter) ===
     HOMOGRAPHY_SMOOTH_ENABLED: bool = True
     HOMOGRAPHY_MIN_CUTOFF: float = 1.0    # Lower = smoother when camera is still

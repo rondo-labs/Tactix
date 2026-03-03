@@ -8,5 +8,6 @@ Description: Export module — JSON, PDF, and FIFA STF exporters.
 
 from tactix.export.pdf_exporter import PdfReportExporter
 from tactix.export.stf_exporter import StfExporter
+from tactix.export.json_exporter import ViewerJsonExporter
 
-__all__ = ["PdfReportExporter", "StfExporter"]
+__all__ = ["PdfReportExporter", "StfExporter", "ViewerJsonExporter"]
