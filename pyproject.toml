@@ -30,6 +30,8 @@ dependencies = [
     "tqdm",
     "reportlab>=4.0",
     "Pillow>=10.0",
+    "boxmot>=10.0",
+    "transformers>=5.0",
 ]
 
 [project.optional-dependencies]

@@ -148,11 +148,13 @@ class TeamClassifier:
         if crop.size == 0:
             return None
         if mask is not None:
-            # Resize mask to bbox region
-            mask_crop = mask[y_start:y_end, x_start:x_end]
-            if mask_crop.shape[:2] != crop.shape[:2]:
+            # mask is in full-frame coordinates (H, W) or (1, H, W).
+            # Slice into the upper-body region using frame-absolute coordinates.
+            mask_2d = mask.squeeze() if mask.ndim == 3 else mask
+            mask_crop = mask_2d[y1 + y_start : y1 + y_end, x1 + x_start : x1 + x_end]
+            if mask_crop.shape[:2] != crop.shape[:2] or mask_crop.size == 0:
                 return None
-            # Only use pixels inside mask
+            # Only use pixels inside the player's mask (excludes background/neighbours)
             mask_pixels = crop[mask_crop > 0]
             if mask_pixels.size == 0:
                 return None

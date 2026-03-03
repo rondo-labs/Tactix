@@ -67,8 +67,8 @@ class EmbeddingTeamClassifier:
                 "Install with: uv sync --extra embedding"
             )
 
-    def _extract_crop(self, frame: np.ndarray, rect: Tuple[float, float, float, float]) -> Optional[np.ndarray]:
-        """Extract and resize player crop for SigLIP input."""
+    def _extract_crop(self, frame: np.ndarray, rect: Tuple[float, float, float, float], mask: Optional[np.ndarray] = None) -> Optional[np.ndarray]:
+        """Extract player crop for SigLIP input. When mask is provided, background pixels are zeroed."""
         x1, y1, x2, y2 = map(int, rect)
         h_img, w_img = frame.shape[:2]
         x1, y1 = max(0, x1), max(0, y1)
@@ -76,6 +76,12 @@ class EmbeddingTeamClassifier:
         crop = frame[y1:y2, x1:x2]
         if crop.shape[0] < 10 or crop.shape[1] < 10:
             return None
+        if mask is not None:
+            # Slice the full-frame mask to the bbox region and zero out background pixels.
+            mask_2d = mask.squeeze() if mask.ndim == 3 else mask
+            mask_crop = mask_2d[y1:y2, x1:x2]
+            if mask_crop.shape[:2] == crop.shape[:2]:
+                crop = crop * np.expand_dims(mask_crop.astype(np.uint8), axis=-1)
         # Convert BGR to RGB for SigLIP
         crop_rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
         return crop_rgb

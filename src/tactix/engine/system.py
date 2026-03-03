@@ -71,17 +71,17 @@ class TactixEngine:
         else:
             self.pitch_estimator = None
 
-        if self.cfg.SAM3_ENABLED:
-            self.detector = HybridDetector(
-                yolo_weights=self.cfg.PLAYER_MODEL_PATH,
-                sam3_weights=self.cfg.SAM3_MODEL_PATH,
+        # Step 1: create the base detector (YOLO or RF-DETR)
+        if self.cfg.USE_RFDETR:
+            from tactix.models.rfdetr_impl import RFDETRDetector
+            base_detector = RFDETRDetector(
+                model_weights=self.cfg.RFDETR_MODEL_PATH,
+                model_size=self.cfg.RFDETR_MODEL_SIZE,
                 device=self.cfg.DEVICE,
-                conf_yolo=self.cfg.CONF_PLAYER,
-                conf_sam3=self.cfg.SAM3_CONF,
-                sam3_half=self.cfg.SAM3_HALF
+                conf_threshold=self.cfg.CONF_PLAYER,
             )
         else:
-            self.detector = YOLODetector(
+            base_detector = YOLODetector(
                 model_weights=self.cfg.PLAYER_MODEL_PATH,
                 device=self.cfg.DEVICE,
                 conf_threshold=self.cfg.CONF_PLAYER,
@@ -90,7 +90,23 @@ class TactixEngine:
                 ball_slicer_wh=self.cfg.BALL_SLICER_WH,
                 ball_slicer_overlap=self.cfg.BALL_SLICER_OVERLAP,
             )
-        self.tracker = Tracker()
+
+        # Step 2: optionally wrap with SAM3 mask refinement
+        if self.cfg.SAM3_ENABLED:
+            self.detector = HybridDetector(
+                detector=base_detector,
+                sam3_weights=self.cfg.SAM3_MODEL_PATH,
+                device=self.cfg.DEVICE,
+                conf_sam3=self.cfg.SAM3_CONF,
+                sam3_half=self.cfg.SAM3_HALF,
+            )
+        else:
+            self.detector = base_detector
+        self.tracker = Tracker(
+            reid_model_path=self.cfg.BOTSORT_REID_MODEL,
+            device=self.cfg.DEVICE,
+            scene_cut_threshold=self.cfg.SCENE_CUT_THRESHOLD,
+        )
         self.camera_tracker = CameraTracker(
             smoothing_window=5,
             max_drift_frames=self.cfg.OPTICAL_FLOW_MAX_DRIFT_FRAMES,
@@ -268,12 +284,12 @@ class TactixEngine:
                 continue
 
             for p in outfield:
-                color = self.team_classifier._extract_shirt_color(frame, p.rect)
+                color = self.team_classifier._extract_shirt_color(frame, p.rect, mask=p.mask)
                 if color is None:
                     continue
 
                 if self.embedding_classifier is not None:
-                    crop = self.embedding_classifier._extract_crop(frame, p.rect)
+                    crop = self.embedding_classifier._extract_crop(frame, p.rect, mask=p.mask)
                     if crop is not None:
                         paired_colors.append(color)
                         paired_crops.append(crop)
@@ -347,7 +363,7 @@ class TactixEngine:
                 active_kps, kp_confs, has_matrix = self._stage_calibration(frame)
                 frame_data = self.detector.detect(frame, i)
                 frame_data.ball = self.ball_state_tracker.update(i, frame_data.ball)
-                self._stage_tracking(frame_data)
+                self._stage_tracking(frame_data, frame)
                 self._stage_classification(frame, frame_data, i, has_matrix)
                 self._stage_jersey_detection(frame, frame_data, i)
 
@@ -409,15 +425,9 @@ class TactixEngine:
         has_matrix = self.transformer.update(active_keypoints, keypoint_confidences, self.cfg.CONF_PITCH)
         return active_keypoints, keypoint_confidences, has_matrix
 
-    def _stage_tracking(self, frame_data: FrameData) -> None:
-        """Stage 2: Assign persistent track IDs via ByteTrack."""
-        if not frame_data.players:
-            return
-        xyxy = np.array([p.rect for p in frame_data.players])
-        class_ids = np.array([p.class_id for p in frame_data.players])
-        confidences = np.array([p.confidence for p in frame_data.players])
-        sv_dets = sv.Detections(xyxy=xyxy, class_id=class_ids, confidence=confidences)
-        self.tracker.update(sv_dets, frame_data)
+    def _stage_tracking(self, frame_data: FrameData, frame: np.ndarray) -> None:
+        """Stage 2: Assign persistent track IDs via BotSORT."""
+        self.tracker.update(frame_data, frame)
 
     def _stage_classification(
         self, frame: np.ndarray, frame_data: FrameData, frame_index: int, has_matrix: bool
@@ -461,7 +471,7 @@ class TactixEngine:
                 p.team = self.player_registry.get_team(pid)
             else:
                 # Still accumulating evidence: color classifier only (SigLIP is prescan-only)
-                color = self.team_classifier._extract_shirt_color(frame, p.rect)
+                color = self.team_classifier._extract_shirt_color(frame, p.rect, mask=p.mask)
                 if color is not None:
                     self.player_registry.record_color_sample(pid, color)
                     predicted = self.team_classifier.predict_one(color)
