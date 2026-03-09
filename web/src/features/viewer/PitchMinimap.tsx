@@ -1,4 +1,4 @@
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useMemo } from "react";
 import { usePlaybackStore } from "../../stores/playbackStore";
 import type { TrackingFrame } from "../../types/tracking";
 import { computeVoronoi } from "../../lib/computeVoronoi";
@@ -26,6 +26,19 @@ export default function PitchMinimap({ width, height, frame }: Props) {
   const meta = usePlaybackStore((s) => s.trackingData?.meta);
   const trackingData = usePlaybackStore((s) => s.trackingData);
   const currentFrame = usePlaybackStore((s) => s.currentFrame);
+
+  // Throttled heatmap: only recompute every 5 frames
+  const heatmapBucket = Math.floor(currentFrame / 5) * 5;
+  const heatmapGrid = useMemo(() => {
+    if (!layers.heatmap || !trackingData) return null;
+    const srcW = meta?.canvas.width ?? 1559;
+    const srcH = meta?.canvas.height ?? 1010;
+    return computeHeatmap(
+      trackingData.frames, heatmapBucket, 40, 26,
+      srcW, srcH,
+      selectedPlayerIds.length > 0 ? selectedPlayerIds : undefined,
+    );
+  }, [layers.heatmap, trackingData, heatmapBucket, meta, selectedPlayerIds]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -65,15 +78,8 @@ export default function PitchMinimap({ width, height, frame }: Props) {
     }
 
     // ── Heatmap overlay ──
-    if (layers.heatmap && trackingData) {
-      const gridW = 40;
-      const gridH = 26;
-      const grid = computeHeatmap(
-        trackingData.frames, currentFrame, gridW, gridH,
-        srcW, srcH,
-        selectedPlayerIds.length > 0 ? selectedPlayerIds : undefined,
-      );
-      const imgData = renderHeatmapToCanvas(grid, gridW, gridH, width, height, margin, margin, pw, ph);
+    if (heatmapGrid) {
+      const imgData = renderHeatmapToCanvas(heatmapGrid, 40, 26, width, height, margin, margin, pw, ph);
       const offscreen = new OffscreenCanvas(width, height);
       const offCtx = offscreen.getContext("2d")!;
       offCtx.putImageData(imgData, 0, 0);
@@ -266,7 +272,7 @@ export default function PitchMinimap({ width, height, frame }: Props) {
       ctx.fillStyle = "#ffa500";
       ctx.fill();
     }
-  }, [width, height, frame, showVelocity, showIds, meta, selectedPlayerIds, layers, trackingData, currentFrame]);
+  }, [width, height, frame, showVelocity, showIds, meta, selectedPlayerIds, layers, heatmapGrid]);
 
   if (width <= 0 || height <= 0) return null;
 

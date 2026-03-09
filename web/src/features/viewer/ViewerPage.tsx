@@ -5,6 +5,7 @@ import StatsPanel from "../stats/StatsPanel";
 import PitchMinimap from "./PitchMinimap";
 import PlaybackControls from "./PlaybackControls";
 import { usePlaybackLoop } from "./usePlaybackLoop";
+import { useKeyboardShortcuts } from "../../hooks/useKeyboardShortcuts";
 
 export default function ViewerPage() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -17,6 +18,7 @@ export default function ViewerPage() {
     usePlaybackStore();
 
   usePlaybackLoop(videoRef);
+  useKeyboardShortcuts();
 
   // Resize minimap to fit its container
   useEffect(() => {
