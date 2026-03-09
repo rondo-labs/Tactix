@@ -1,6 +1,8 @@
 import { useRef, useEffect } from "react";
 import { usePlaybackStore } from "../../stores/playbackStore";
 import type { TrackingFrame } from "../../types/tracking";
+import { computeVoronoi } from "../../lib/computeVoronoi";
+import { computeHeatmap, renderHeatmapToCanvas } from "../../lib/computeHeatmap";
 
 const TEAM_COLORS: Record<string, string> = {
   A: "#e63946",
@@ -20,8 +22,10 @@ interface Props {
 
 export default function PitchMinimap({ width, height, frame }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const { showVelocity, showIds } = usePlaybackStore();
+  const { showVelocity, showIds, selectedPlayerIds, layers } = usePlaybackStore();
   const meta = usePlaybackStore((s) => s.trackingData?.meta);
+  const trackingData = usePlaybackStore((s) => s.trackingData);
+  const currentFrame = usePlaybackStore((s) => s.currentFrame);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -60,42 +64,63 @@ export default function PitchMinimap({ width, height, frame }: Props) {
       ctx.fillRect(margin + i * stripeW, margin, stripeW, ph);
     }
 
+    // ── Heatmap overlay ──
+    if (layers.heatmap && trackingData) {
+      const gridW = 40;
+      const gridH = 26;
+      const grid = computeHeatmap(
+        trackingData.frames, currentFrame, gridW, gridH,
+        srcW, srcH,
+        selectedPlayerIds.length > 0 ? selectedPlayerIds : undefined,
+      );
+      const imgData = renderHeatmapToCanvas(grid, gridW, gridH, width, height, margin, margin, pw, ph);
+      const offscreen = new OffscreenCanvas(width, height);
+      const offCtx = offscreen.getContext("2d")!;
+      offCtx.putImageData(imgData, 0, 0);
+      ctx.drawImage(offscreen, 0, 0);
+    }
+
+    // ── Voronoi overlay ──
+    if (layers.voronoi && frame?.players) {
+      const voronoi = computeVoronoi(frame.players, pw, ph, sx, sy, srcW, srcH);
+      for (const cell of voronoi.cellPaths) {
+        ctx.fillStyle = cell.team === "A" ? "rgba(230,57,70,0.10)" : "rgba(69,123,157,0.10)";
+        ctx.fill(cell.path);
+        ctx.strokeStyle = cell.team === "A" ? "rgba(230,57,70,0.25)" : "rgba(69,123,157,0.25)";
+        ctx.lineWidth = 0.8;
+        ctx.stroke(cell.path);
+      }
+    }
+
     // ── Pitch lines ──
     ctx.strokeStyle = "rgba(255,255,255,0.22)";
     ctx.lineWidth = lineWidth;
     ctx.lineCap = "round";
 
-    // Outer boundary
     ctx.strokeRect(mx(0), my(0), ms(PITCH.L), msv(PITCH.W));
 
-    // Halfway line
     ctx.beginPath();
     ctx.moveTo(mx(52.5), my(0));
     ctx.lineTo(mx(52.5), my(PITCH.W));
     ctx.stroke();
 
-    // Centre circle
     ctx.beginPath();
     ctx.arc(mx(52.5), my(34), ms(9.15), 0, Math.PI * 2);
     ctx.stroke();
 
-    // Centre spot
     ctx.fillStyle = "rgba(255,255,255,0.4)";
     ctx.beginPath();
     ctx.arc(mx(52.5), my(34), Math.max(2, ms(0.35)), 0, Math.PI * 2);
     ctx.fill();
 
-    // Penalty areas
     ctx.strokeStyle = "rgba(255,255,255,0.22)";
     ctx.lineWidth = lineWidth;
     ctx.strokeRect(mx(0), my((PITCH.W - 40.32) / 2), ms(16.5), msv(40.32));
     ctx.strokeRect(mx(PITCH.L - 16.5), my((PITCH.W - 40.32) / 2), ms(16.5), msv(40.32));
 
-    // Goal areas
     ctx.strokeRect(mx(0), my((PITCH.W - 18.32) / 2), ms(5.5), msv(18.32));
     ctx.strokeRect(mx(PITCH.L - 5.5), my((PITCH.W - 18.32) / 2), ms(5.5), msv(18.32));
 
-    // Penalty spots
     ctx.fillStyle = "rgba(255,255,255,0.4)";
     for (const xm of [11, PITCH.L - 11]) {
       ctx.beginPath();
@@ -103,7 +128,6 @@ export default function PitchMinimap({ width, height, frame }: Props) {
       ctx.fill();
     }
 
-    // Penalty arcs
     ctx.strokeStyle = "rgba(255,255,255,0.22)";
     ctx.lineWidth = lineWidth;
     const arcAngle = Math.acos(5.5 / 9.15);
@@ -114,7 +138,6 @@ export default function PitchMinimap({ width, height, frame }: Props) {
     ctx.arc(mx(PITCH.L - 11), my(34), ms(9.15), Math.PI - arcAngle, Math.PI + arcAngle);
     ctx.stroke();
 
-    // Goals
     ctx.strokeStyle = "rgba(255,255,255,0.35)";
     ctx.lineWidth = lineWidth * 1.5;
     ctx.fillStyle = "rgba(255,255,255,0.05)";
@@ -123,7 +146,6 @@ export default function PitchMinimap({ width, height, frame }: Props) {
     ctx.fillRect(mx(PITCH.L), my((PITCH.W - 7.32) / 2), ms(1.5), msv(7.32));
     ctx.strokeRect(mx(PITCH.L), my((PITCH.W - 7.32) / 2), ms(1.5), msv(7.32));
 
-    // Corner arcs
     ctx.strokeStyle = "rgba(255,255,255,0.22)";
     ctx.lineWidth = lineWidth;
     for (const [cx, cy, sa, ea] of [
@@ -137,13 +159,57 @@ export default function PitchMinimap({ width, height, frame }: Props) {
       ctx.stroke();
     }
 
+    // ── Team centroid ──
+    if (layers.teamCentroid && frame?.players) {
+      for (const team of ["A", "B"] as const) {
+        const tp = frame.players.filter((p) => p.team === team);
+        if (tp.length === 0) continue;
+        const cx = tp.reduce((s, p) => s + sx(p.x), 0) / tp.length;
+        const cy = tp.reduce((s, p) => s + sy(p.y), 0) / tp.length;
+        const color = TEAM_COLORS[team];
+        // Cross marker
+        const sz = 8;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2.5;
+        ctx.globalAlpha = 0.7;
+        ctx.beginPath(); ctx.moveTo(cx - sz, cy); ctx.lineTo(cx + sz, cy); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(cx, cy - sz); ctx.lineTo(cx, cy + sz); ctx.stroke();
+        // Circle around centroid
+        ctx.beginPath();
+        ctx.arc(cx, cy, sz + 2, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+    }
+
     // ── Players ──
     if (frame?.players) {
       const r = Math.max(5, pw * 0.007);
+      const hasSelection = selectedPlayerIds.length > 0;
+
       for (const p of frame.players) {
         const px = sx(p.x);
         const py = sy(p.y);
         const color = TEAM_COLORS[p.team] ?? TEAM_COLORS.UNKNOWN;
+        const isSelected = selectedPlayerIds.includes(p.id);
+        const dimmed = hasSelection && !isSelected;
+
+        ctx.globalAlpha = dimmed ? 0.25 : 1;
+
+        // Selection ring
+        if (isSelected) {
+          ctx.beginPath();
+          ctx.arc(px, py, r + 4, 0, Math.PI * 2);
+          ctx.strokeStyle = "#58a6ff";
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          // Pulse glow
+          ctx.beginPath();
+          ctx.arc(px, py, r + 6, 0, Math.PI * 2);
+          ctx.strokeStyle = "rgba(88,166,255,0.3)";
+          ctx.lineWidth = 3;
+          ctx.stroke();
+        }
 
         // Dot
         ctx.beginPath();
@@ -171,9 +237,8 @@ export default function PitchMinimap({ width, height, frame }: Props) {
           ctx.lineTo(ex, ey);
           ctx.strokeStyle = color;
           ctx.lineWidth = 1.5;
-          ctx.globalAlpha = 0.8;
+          ctx.globalAlpha = dimmed ? 0.15 : 0.8;
           ctx.stroke();
-          // Arrowhead
           const angle = Math.atan2(ey - py, ex - px);
           ctx.beginPath();
           ctx.moveTo(ex, ey);
@@ -182,8 +247,9 @@ export default function PitchMinimap({ width, height, frame }: Props) {
           ctx.closePath();
           ctx.fillStyle = color;
           ctx.fill();
-          ctx.globalAlpha = 1;
         }
+
+        ctx.globalAlpha = 1;
       }
     }
 
@@ -191,18 +257,16 @@ export default function PitchMinimap({ width, height, frame }: Props) {
     if (frame?.ball) {
       const bx = sx(frame.ball.x);
       const by = sy(frame.ball.y);
-      // Glow
       ctx.beginPath();
       ctx.arc(bx, by, Math.max(6, pw * 0.007), 0, Math.PI * 2);
       ctx.fillStyle = "rgba(255,165,0,0.3)";
       ctx.fill();
-      // Ball
       ctx.beginPath();
       ctx.arc(bx, by, Math.max(4, pw * 0.005), 0, Math.PI * 2);
       ctx.fillStyle = "#ffa500";
       ctx.fill();
     }
-  }, [width, height, frame, showVelocity, showIds, meta]);
+  }, [width, height, frame, showVelocity, showIds, meta, selectedPlayerIds, layers, trackingData, currentFrame]);
 
   if (width <= 0 || height <= 0) return null;
 

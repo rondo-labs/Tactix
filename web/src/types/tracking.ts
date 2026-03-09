@@ -21,6 +21,17 @@ export interface TrackingFrame {
   ball?: TrackingBall;
 }
 
+export interface TrackingEvent {
+  frame: number;
+  type: "shot" | "goal" | "corner" | "free_kick" | "foul" | "offside" | "substitution" | "card" | "other";
+  team?: "A" | "B";
+  player_id?: number;
+  outcome?: string;
+  x?: number;
+  y?: number;
+  label?: string;
+}
+
 export interface TrackingMeta {
   fps: number;
   total_frames: number;
@@ -31,4 +42,5 @@ export interface TrackingMeta {
 export interface TrackingData {
   meta: TrackingMeta;
   frames: TrackingFrame[];
+  events?: TrackingEvent[];
 }

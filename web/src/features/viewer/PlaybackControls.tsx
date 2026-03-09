@@ -1,4 +1,5 @@
 import { usePlaybackStore } from "../../stores/playbackStore";
+import Timeline from "./Timeline";
 
 const SPEEDS = [0.25, 0.5, 1, 2, 4];
 
@@ -32,16 +33,17 @@ export default function PlaybackControls() {
 
   return (
     <div style={bar}>
+      {/* Timeline with event markers */}
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <span style={{ fontSize: 11, color: "#8b949e", width: 180, flexShrink: 0 }}>
           {formatTime(currentFrame)} / {formatTime(totalFrames)} · frame {currentFrame}
         </span>
-        <input
-          type="range" min={0} max={Math.max(totalFrames - 1, 1)} value={currentFrame}
-          onChange={(e) => setCurrentFrame(Number(e.target.value))}
-          style={{ flex: 1 }}
-        />
+        <div style={{ flex: 1 }}>
+          <Timeline />
+        </div>
       </div>
+
+      {/* Controls row */}
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
         <button style={btn} onClick={() => setCurrentFrame(Math.max(0, currentFrame - 1))}>‹</button>
         <button style={{ ...btn, background: "#58a6ff", color: "#000", fontWeight: 600, border: "none" }} onClick={togglePlaying}>
