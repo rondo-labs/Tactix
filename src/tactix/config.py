@@ -111,6 +111,19 @@ class Config:
     PRESCAN_NUM_FRAMES: int = 30      # How many frames to sample across the video
     PRESCAN_MIN_PLAYERS: int = 4      # Min players per frame to include in training data
 
+    # === RF-DETR Detector ===
+    # When True, replaces YOLO with a fine-tuned RF-DETR model for detection.
+    # Requires rfdetr package (conflicts with transformers>=5.0 — see rfdetr_impl.py).
+    USE_RFDETR: bool = False
+    RFDETR_MODEL_PATH: str = "assets/weights/rfdetr_large_football_best.pth"
+    RFDETR_MODEL_SIZE: str = "large"  # "large" or "base"
+
+    # === BotSORT Tracker ===
+    # ReID model for appearance-based re-identification (auto-downloaded by boxmot if absent).
+    BOTSORT_REID_MODEL: str = "assets/weights/osnet_x0_25_msmt17.pt"
+    # Bhattacharyya histogram distance threshold for hard camera-cut detection.
+    SCENE_CUT_THRESHOLD: float = 0.5
+
     # === Tracking & Interpolation Settings ===
     # Max consecutive frames the ball can be missing before interpolation stops.
     BALL_INTERP_MAX_GAP: int = 10
