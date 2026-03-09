@@ -1,6 +1,6 @@
 export interface TrackingPlayer {
   id: number;
-  team: "A" | "B" | "REFEREE" | "GOALKEEPER" | "UNKNOWN";
+  team: "A" | "B" | "REFEREE" | "REF" | "GOALKEEPER" | "GK" | "UNKNOWN" | "?";
   x: number;
   y: number;
   vx?: number;

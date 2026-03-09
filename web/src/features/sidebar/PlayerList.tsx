@@ -4,9 +4,9 @@ import type { TrackingPlayer } from "../../types/tracking";
 const TEAM_COLORS: Record<string, string> = {
   A: "#e63946",
   B: "#457b9d",
-  REFEREE: "#ffd60a",
-  GOALKEEPER: "#a8dadc",
-  UNKNOWN: "#888888",
+  REFEREE: "#ffd60a", REF: "#ffd60a",
+  GOALKEEPER: "#a8dadc", GK: "#a8dadc",
+  UNKNOWN: "#888888", "?": "#888888",
 };
 
 export default function PlayerList() {

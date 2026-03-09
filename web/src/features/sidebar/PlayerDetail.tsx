@@ -1,7 +1,7 @@
 import { useMemo, useRef, useEffect } from "react";
 import { usePlaybackStore } from "../../stores/playbackStore";
 
-const TEAM_COLORS: Record<string, string> = { A: "#e63946", B: "#457b9d", REFEREE: "#ffd60a", GOALKEEPER: "#a8dadc", UNKNOWN: "#888" };
+const TEAM_COLORS: Record<string, string> = { A: "#e63946", B: "#457b9d", REFEREE: "#ffd60a", REF: "#ffd60a", GOALKEEPER: "#a8dadc", GK: "#a8dadc", UNKNOWN: "#888", "?": "#888" };
 
 export default function PlayerDetail() {
   const { trackingData, currentFrame, selectedPlayerIds, clearSelectedPlayers } = usePlaybackStore();
