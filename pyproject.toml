@@ -37,6 +37,7 @@ dependencies = [
 [project.optional-dependencies]
 ocr = ["easyocr>=1.7.1"]
 embedding = ["transformers>=4.40", "umap-learn>=0.5", "torch>=2.0"]
+web = ["fastapi>=0.115", "uvicorn[standard]>=0.34", "python-multipart>=0.0.18", "sqlmodel>=0.0.22", "aiosqlite>=0.20"]
 
 [project.urls]
 Homepage = "https://github.com/Dreaner/Tactix"
@@ -44,6 +45,7 @@ Repository = "https://github.com/Dreaner/Tactix"
 
 [project.scripts]
 tactix = "tactix.cli:main"
+tactix-serve = "tactix.api.main:serve"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/tactix"]
